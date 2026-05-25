@@ -1,1 +1,1 @@
-gcc game.c -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+gcc main.c player.c -lraylib -lGL -lm -lpthread -ldl -lrt -lX11

@@ -17,6 +17,7 @@ Vector2 NormilizeMovement(Vector2 playerNextPosition)
     return playerNextPosition;
 }
 
+// this function will be on server side
 Vector2 VerifyCollisionWithWalls(Vector2 playerMovement, Vector2 playerPosition, Vector2 playerSize)
 {
 
@@ -57,16 +58,12 @@ int main()
         Vector2 playerMovement = (Vector2){0, 0};
         // movement keys
         if (IsKeyDown(KEY_A))
-            // send to server to validate movement
             playerMovement.x -= 1;
         if (IsKeyDown(KEY_S))
-            // send to server to validate movement
             playerMovement.y += 1;
         if (IsKeyDown(KEY_D))
-            // send to server to validate movement
             playerMovement.x += 1;
         if (IsKeyDown(KEY_W))
-            // send to server to validate movement
             playerMovement.y -= 1;
 
         player_move(player, VerifyCollisionWithWalls(NormilizeMovement(playerMovement), get_player_position(player), get_player_size(player)));

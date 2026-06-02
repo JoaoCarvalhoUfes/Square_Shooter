@@ -1,38 +1,25 @@
-#include "./player.h"
 #include <string.h>
-#include "raylib.h"
+#include "./player.h"
+#include "config.h"
 
-struct player
+Player player_create(const char *name, int id, Vector2 player_position)
 {
-    char *name;
-    int life;
+    Player p;
 
-    Vector2 size;
-    Vector2 position;
-};
-
-Player *player_create(const char *name, Vector2 size, Vector2 player_position)
-{
-    Player *p = (Player *)malloc(sizeof(Player));
-    p->name = strdup(name);
-    p->life = MAX_PLAYER_LIFE;
-    p->size = size;
+    p.id = id;
+    p.name = strdup(name);
+    p.life = MAX_PLAYER_LIFE;
 
     // Correção da posição
-    Vector2 position = {player_position.x - (p->size.x) / 2, player_position.y - (p->size.y) / 2};
-    p->position = position;
+    Vector2 position = {player_position.x - (PLAYER_WIDTH) / 2, player_position.y - (PLAYER_HEIGHT) / 2};
+    p.position = position;
 
     return p;
 }
 
-Vector2 get_player_size(Player *p)
+Vector2 get_player_position(Player p)
 {
-    return p->size;
-}
-
-Vector2 get_player_position(Player *p)
-{
-    return p->position;
+    return p.position;
 }
 
 void player_move(Player *p, Vector2 direction)

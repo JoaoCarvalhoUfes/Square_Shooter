@@ -25,8 +25,7 @@ Vector2 get_player_position(Player p)
 
 void player_move(Player *p, Vector2 direction)
 {
-    p->position.x = direction.x;
-    p->position.y = direction.y;
+    p->position = direction;
 }
 
 void connect_player(Player *p) {

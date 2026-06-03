@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "raylib.h"
+#include "raymath.h"
 #include "./player.h"
 #include "./api.h"
 #include "./packets.h"
@@ -23,8 +24,6 @@ ClientGame global_game_instance = {
     .client_player_id = -1
 };
 // ==================================================================
-
-
 
 int connect_to_server(char *hostname, int port_number);
 void read_packets(int server_fd);
@@ -88,6 +87,20 @@ int main(int argc, char *argv[])
         // Atualiza o alvo da câmera para ser o centro do player
         camera.target = (Vector2){current_pos.x + (PLAYER_WIDTH / 2.0f), current_pos.y + (PLAYER_HEIGHT / 2.0f)};
 
+        // ===================
+        // Interpolação de movimento
+        for(int i = 0; i < MAX_PLAYERS; i++) {
+            Player *p = &global_game_instance.list_all_players[i];
+            if(player_is_connected(p)) {
+                if(i == player_id) p->position = p->target_position;
+                else {
+                    p->position = Vector2Lerp(p->position, p->target_position, MOVE_INTERPOLATION_FACTOR);
+                }
+            }
+        }
+
+        // ====================
+
         // 2. DESENHO (Draw)
         BeginDrawing();
         ClearBackground(BACKGROUND_COLOR); // Cor fora do mapa (ex: preto)
@@ -117,7 +130,6 @@ int main(int argc, char *argv[])
             if(player_is_connected(&p)) {
                 DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
             }
-            
         }
 
         EndMode2D(); // Termina o modo de câmera
@@ -153,7 +165,6 @@ void read_packets(int server_fd) {
     global_game_instance.num_bytes_in_buf += n_bytes;
 
     // Obs.: O tipo do pacote é a primeira informação e tem 4 bytes.
-    printf("oi\n");
     while(global_game_instance.num_bytes_in_buf >= 4) {
         type_packet type = *(int *)(global_game_instance.buffer);
         int packet_size = get_packet_size(type);
@@ -163,14 +174,11 @@ void read_packets(int server_fd) {
             PacketJoinAccept packet;
             memcpy(&packet, global_game_instance. buffer, sizeof(PacketJoinAccept));
             process_join_packet(&packet, &global_game_instance);
-            printf("LI JOIN\n\n\n");
         }
         else if(type == SNAPSHOT) {
             PacketSnapshot packet;
             memcpy(&packet, global_game_instance. buffer, sizeof(PacketSnapshot));
             process_snapshot_packet(&packet, &global_game_instance);
-            printf("LI SNAPSHOT\n\n\n");
-
         }
 
         //===============================================================================

@@ -12,6 +12,7 @@ struct player
 
     int life;
     Vector2 position;
+    Vector2 target_position;
 };
 
 Player player_create(const char *name, int id, Vector2 player_position);

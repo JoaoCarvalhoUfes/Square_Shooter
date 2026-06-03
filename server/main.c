@@ -9,27 +9,17 @@
 #include <sys/select.h>
 #include <time.h>
 #include <stdbool.h>
+#include <signal.h>
+#include <errno.h>
 
 // includes que precisam melhorar a organização
 #include "../config.h"
 #include "./player.h"
 #include "./packets.h"
-
-
-// controller imports
 #include "./controller/movement_controller.h"
 
 // Definindo o tickrate (60 vezes por segundo)
-#define TICK_RATE 60.0
-#define TICK_INTERVAL_SEC (1.0 / TICK_RATE) // ~0.0166 segundos
 #define TICK_PERIOD_USEC 16667
-
-void assert(int cond, const char * msg) {
-    if(cond) {
-        perror(msg);
-        exit(1);
-    }
-}
 
 typedef struct {
     int fd;
@@ -46,7 +36,10 @@ static void create_new_server_player(PlayerConnection *players_connection_list, 
 SnapShot generate_snapshot(PlayerConnection *player_connections_list);
 
 int main(int argc, char *argv[]) {
-    assert((argc < 2), "Port number not provided.");
+    if(argc < 2) { perror("Port number not provided."); exit(1); }
+
+    // Bloqueando SIGPIPE (Para tratar se algum jogador desconectar)
+    signal(SIGPIPE, SIG_IGN);
 
     // ===================
     // DATABASE. No início, não ha player conectado.
@@ -120,8 +113,14 @@ int main(int argc, char *argv[]) {
         SnapShot snapshot = generate_snapshot(players_connections);
         PacketSnapshot packet = create_snapshot_packet(&snapshot);
         for(int i = 0; i < MAX_PLAYERS; i++) {
-            if(player_is_connected(&players_connections[i].player)) {                
+            errno = 0;
+            if(player_is_connected(&players_connections[i].player)) {  
                 send_packet(players_connections[i].fd, SNAPSHOT, &packet);
+                
+                if(errno == EPIPE) {
+                    disconnect_player(&players_connections[i].player);
+                    close(players_connections[i].fd);
+                }
             }
         }
 
@@ -143,8 +142,6 @@ static void create_new_server_player(PlayerConnection *players_connection_list, 
 
             // Enviando pacote de join accept
             PacketJoinAccept packet = create_join_accept_packet(player_id);
-            fprintf(stdout, "enviando o pacote de join\n");
-            fflush(stdout);
             send_packet(client_fd, JOIN_ACCEPT, &packet);
 
             return;
@@ -210,7 +207,7 @@ int create_and_bind_passive_socket(int port_number) {
 
     // Criando socket passivo do servidor
     server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    assert((server_sockfd < 0), "Error opening socket.");
+    if(server_sockfd < 0) { perror("Error opening socket."); exit(1); }
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -218,7 +215,7 @@ int create_and_bind_passive_socket(int port_number) {
 
     // bind do fd com o addr
     n = bind(server_sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr));
-    assert((n < 0), "Binding failed");
+    if(n < 0) { perror("Binding failed"); exit(1); }
 
     return server_sockfd;
 }

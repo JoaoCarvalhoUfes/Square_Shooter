@@ -26,7 +26,10 @@ ClientGame global_game_instance = {
 // ==================================================================
 
 int connect_to_server(char *hostname, int port_number);
-void read_packets(int server_fd);
+void read_packets(int server_fd, bool syscall_block);
+void positions_players_interpolate(int player_id);
+Vector2 process_delta_movement();
+void draw_player(char *player_name, Vector2 player_position);
 
 void init_setup();
 
@@ -48,7 +51,7 @@ int main(int argc, char *argv[])
     // Se chegar aqui, conectou ao server, le os pacotes no buffer 
     // (o primeiro a chegar será) o pacote de join accept.
     // ==============
-    read_packets(server_fd);
+    read_packets(server_fd, true);
 
     init_setup();
 
@@ -61,44 +64,35 @@ int main(int argc, char *argv[])
     while (!WindowShouldClose())
     {
         // Lê o snapshot do game
-        read_packets(server_fd);
+        read_packets(server_fd, false);
 
         if(player_id < 0) player_id = global_game_instance.client_player_id;
 
-        // 1. ATUALIZAÇÃO DA LÓGICA (Update)
-        Vector2 delta_movement = (Vector2){0, 0};
+        // Salva a diferença de posição
+        Vector2 delta_movement = process_delta_movement();
 
-        if (IsKeyDown(KEY_A)) 
-            delta_movement.x -= 1;
-        if (IsKeyDown(KEY_S))
-            delta_movement.y += 1;
-        if (IsKeyDown(KEY_D))
-            delta_movement.x += 1;
-        if (IsKeyDown(KEY_W))
-            delta_movement.y -= 1;
+        // Move o player localmente e online.
+        // Obs.: move localmente para o player local não ver delay.
 
-        // Move o player
+        // Mas, para segurança, futuramente deve fazer uma validação se a posição que o player foi
+        // faz sentido.
+        Vector2 new_position_local = VerifyCollisionWithWalls(&global_game_instance.list_all_players[player_id], delta_movement);
+        player_move(&global_game_instance.list_all_players[player_id], new_position_local);
+
+        // Move online
         request_move_player(server_fd, player_id, delta_movement);
 
-        Vector2 current_pos = get_player_position(global_game_instance.list_all_players[player_id]);
 
+        // Configuração de câmera
+        Vector2 current_pos = get_player_position(&global_game_instance.list_all_players[player_id]);
         // Coloca o target no meio da tela
         camera.offset = (Vector2){GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f}; 
         // Atualiza o alvo da câmera para ser o centro do player
         camera.target = (Vector2){current_pos.x + (PLAYER_WIDTH / 2.0f), current_pos.y + (PLAYER_HEIGHT / 2.0f)};
 
         // ===================
-        // Interpolação de movimento
-        for(int i = 0; i < MAX_PLAYERS; i++) {
-            Player *p = &global_game_instance.list_all_players[i];
-            if(player_is_connected(p)) {
-                if(i == player_id) p->position = p->target_position;
-                else {
-                    p->position = Vector2Lerp(p->position, p->target_position, MOVE_INTERPOLATION_FACTOR);
-                }
-            }
-        }
-
+        // Interpolação de movimento (para suavizar)
+        positions_players_interpolate(player_id);
         // ====================
 
         // 2. DESENHO (Draw)
@@ -126,9 +120,10 @@ int main(int argc, char *argv[])
 
         // Desenha todos os players
         for(int i = 0; i < MAX_PLAYERS; i++) {
-            Player p = global_game_instance.list_all_players[i];
-            if(player_is_connected(&p)) {
-                DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
+            Player *p = &global_game_instance.list_all_players[i];
+            if(player_is_connected(p)) {
+                //DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
+                draw_player(get_player_name(p), get_player_position(p));
             }
         }
 
@@ -150,13 +145,68 @@ void init_setup()
     InitWindow(800, 400, WINDOW_NAME);
     SetTargetFPS(60); // NOVO: É boa prática travar o FPS para evitar consumo excessivo de CPU
 }
+// =======================================
+// player
+void draw_player(char *player_name, Vector2 player_position) {
+    // Calcula a posição do Texto
+    // Medimos a largura do texto para centralizar perfeitamente acima do quadrado
+    int textWidth = MeasureText(player_name, FONT_SIZE);
+    
+    // X centralizado: centro do player menos a metade da largura do texto
+    int textX = player_position.x + (PLAYER_WIDTH / 2) - (textWidth / 2);
+    
+    // Y acima do player: Y do player menos a altura da fonte e uma folga (ex: 10 pixels)
+    int textY = player_position.y - FONT_SIZE - 10;
+    
+    DrawText(player_name, textX, textY, FONT_SIZE, BLACK);
+    DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
+}
+
+
+
+// =======================================
+// movement interpolate
+void positions_players_interpolate(int player_id) {
+    for(int i = 0; i < MAX_PLAYERS; i++) {
+    Player *p = &global_game_instance.list_all_players[i];
+        if(player_is_connected(p)) {
+            if(i == player_id) continue;
+            else {
+                p->position = Vector2Lerp(p->position, p->target_position, MOVE_INTERPOLATION_FACTOR);
+            }
+        }
+    }
+}
+
+Vector2 process_delta_movement() {
+    Vector2 delta_movement = (Vector2){0, 0};
+
+    if (IsKeyDown(KEY_A)) 
+        delta_movement.x -= 1;
+    if (IsKeyDown(KEY_S))
+        delta_movement.y += 1;
+    if (IsKeyDown(KEY_D))
+        delta_movement.x += 1;
+    if (IsKeyDown(KEY_W))
+        delta_movement.y -= 1;
+
+    return delta_movement;
+}
 
 
 
 // ==============================================================================
 // SOCKETS CONFIGURATION
-void read_packets(int server_fd) {
-    int n_bytes = read(server_fd, (global_game_instance.buffer + global_game_instance.num_bytes_in_buf), BUFFER_SIZE - global_game_instance.num_bytes_in_buf);
+void read_packets(int server_fd, bool syscall_block) {
+    int n_bytes = -1;
+    if(syscall_block) {
+        n_bytes = read(server_fd, (global_game_instance.buffer + global_game_instance.num_bytes_in_buf), BUFFER_SIZE - global_game_instance.num_bytes_in_buf);
+    } else {
+        n_bytes = recv(server_fd, 
+                        global_game_instance.buffer + global_game_instance.num_bytes_in_buf, 
+                        BUFFER_SIZE - global_game_instance.num_bytes_in_buf, 
+                        MSG_DONTWAIT);
+    }
 
     // Se houve erro de leitura, retorna
     if(n_bytes < 0) return;
@@ -168,6 +218,9 @@ void read_packets(int server_fd) {
     while(global_game_instance.num_bytes_in_buf >= 4) {
         type_packet type = *(int *)(global_game_instance.buffer);
         int packet_size = get_packet_size(type);
+
+        // Leitura de pacote parcialmente recebido
+        if(global_game_instance.num_bytes_in_buf < packet_size) return;
 
         // Se for de movimento, faz o casting
         if(type == JOIN_ACCEPT) {
@@ -188,6 +241,8 @@ void read_packets(int server_fd) {
         global_game_instance.num_bytes_in_buf = bytes_left;
     }
 }
+
+//
 
 
 // Retorna o descritor de arquivo do servidor

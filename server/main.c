@@ -7,10 +7,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/select.h>
+#include <sys/time.h>
 #include <time.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <errno.h>
+#include <pthread.h>
 
 // includes que precisam melhorar a organização
 #include "../config.h"
@@ -19,7 +21,7 @@
 #include "./controller/movement_controller.h"
 
 // Definindo o tickrate (60 vezes por segundo)
-#define TICK_PERIOD_USEC 16667
+#define TIME_PER_FRAME 16667
 
 typedef struct {
     int fd;
@@ -30,10 +32,29 @@ typedef struct {
     int num_bytes_in_buf;
 } PlayerConnection;
 
+// GLOBAL DATABASE ===========================
+PlayerConnection players_connections[MAX_PLAYERS];
+// END GLOBAL DATABASE ===========================
+
+
+
+
+// THREADS ===========================
+void *snapshot_thread_function(void *arg);
+
+
+// END THREADS ===========================
+
+
+
+
+
+
+
 int create_and_bind_passive_socket(int port_number);
 void read_packets(PlayerConnection *player_connection);
-static void create_new_server_player(PlayerConnection *players_connection_list, int client_fd);
-SnapShot generate_snapshot(PlayerConnection *player_connections_list);
+static void create_new_server_player(int client_fd);
+SnapShot generate_snapshot();
 
 int main(int argc, char *argv[]) {
     if(argc < 2) { perror("Port number not provided."); exit(1); }
@@ -43,7 +64,6 @@ int main(int argc, char *argv[]) {
 
     // ===================
     // DATABASE. No início, não ha player conectado.
-    PlayerConnection players_connections[MAX_PLAYERS];
     for(int i = 0; i < MAX_PLAYERS; i++)
         disconnect_player(&players_connections[i].player);
 
@@ -67,6 +87,13 @@ int main(int argc, char *argv[]) {
     // ===================
     // LOOP PRINCIPAL
 
+    // ===================
+    // Iniciando threads
+    pthread_t snapshot_thread;
+    pthread_create(&snapshot_thread, NULL, snapshot_thread_function, NULL);    
+    
+    // ==================
+
     while(1) {
         // Configurando set de fds. (Reseta lista a cada iteração e adiciona os FDs alvo)
         FD_ZERO(&set_fds);    
@@ -88,7 +115,7 @@ int main(int argc, char *argv[]) {
         // -> Como quero que o jogo rode a 60fps, vou fazer um timeout no select para que o select desbloqueie 60x por segundo.
         struct timeval timeout;
         timeout.tv_sec = 0;  // 0 segundos
-        timeout.tv_usec = TICK_PERIOD_USEC; // 0 microssegundos
+        timeout.tv_usec = TIME_PER_FRAME; // 0 microssegundos
 
         select(max_fd + 1, &set_fds, NULL, NULL, &timeout);
 
@@ -98,7 +125,7 @@ int main(int argc, char *argv[]) {
             client_sockfd = accept(server_sockfd, NULL, NULL);
 
             // Cria e guarda player. Atenção: envia informações iniciais ao player
-            create_new_server_player(players_connections, client_sockfd);
+            create_new_server_player(client_sockfd);
         }
 
         // Caso 2. A comunicação aconteceu por outro socket (que não é o passivo)
@@ -109,36 +136,23 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Envia um novo snapshot aos players
-        SnapShot snapshot = generate_snapshot(players_connections);
-        PacketSnapshot packet = create_snapshot_packet(&snapshot);
-        for(int i = 0; i < MAX_PLAYERS; i++) {
-            errno = 0;
-            if(player_is_connected(&players_connections[i].player)) {  
-                send_packet(players_connections[i].fd, SNAPSHOT, &packet);
-                
-                if(errno == EPIPE) {
-                    disconnect_player(&players_connections[i].player);
-                    close(players_connections[i].fd);
-                }
-            }
-        }
-
+        // tirei o snapshot e deixei em uma thread secundaria
     }
 }
 
 
 // ============ PLAYER ENTER ========================
-static void create_new_server_player(PlayerConnection *players_connection_list, int client_fd) {
+static void create_new_server_player(int client_fd) {
     for(int i = 0; i < MAX_PLAYERS; i++) {
-        if(player_is_connected(&players_connection_list[i].player) == false) {
+        if(player_is_connected(&players_connections[i].player) == false) {
             Vector2 position = { MAP_WIDTH/2, MAP_HEIGHT/2 };
             int player_id = i;
-            players_connection_list[i].player = player_create("Ronald", player_id, position);
-            players_connection_list[i].fd = client_fd;
-            players_connection_list[i].num_bytes_in_buf = 0;
+            players_connections[i].player = player_create("Ronald", player_id, position);
+            players_connections[i].fd = client_fd;
+            players_connections[i].num_bytes_in_buf = 0;
 
-            connect_player(&players_connection_list[i].player);
+            // Faz a conexão do player por último para evitar inconsistencias
+            connect_player(&players_connections[i].player);
 
             // Enviando pacote de join accept
             PacketJoinAccept packet = create_join_accept_packet(player_id);
@@ -151,12 +165,12 @@ static void create_new_server_player(PlayerConnection *players_connection_list, 
 
 // ============ FINAL PLAYER ENTER ======================
 
-SnapShot generate_snapshot(PlayerConnection *player_connections_list) {
+SnapShot generate_snapshot() {
     SnapShot snapshot;
 
     // Separing players    
     for(int i = 0; i < MAX_PLAYERS; i++) {
-        snapshot.list_all_players[i] = player_connections_list[i].player;
+        snapshot.list_all_players[i] = players_connections[i].player;
     }
     
     return snapshot;
@@ -168,7 +182,8 @@ SnapShot generate_snapshot(PlayerConnection *player_connections_list) {
 void read_packets(PlayerConnection *player_connection) {
     // Obs.: Offset para não sobrescrever o buffer local.
     // Lê até (no máximo) o que falta para completar o buffer
-    int n_bytes = read(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf);
+    // int n_bytes = read(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf);
+    int n_bytes = recv(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf, MSG_DONTWAIT);
 
     // Se houve erro de leitura, retorna
     if(n_bytes < 0) return;
@@ -180,6 +195,9 @@ void read_packets(PlayerConnection *player_connection) {
     while(player_connection->num_bytes_in_buf >= 4) {
         type_packet type = *(int *)(player_connection->buffer);
         int packet_size = get_packet_size(type);
+
+        // Se o pacote não está todo no buffer, não lê
+        if(player_connection->num_bytes_in_buf < packet_size) return;
 
         // Se for de movimento, faz o casting
         if(type == MOVEMENT) {
@@ -219,3 +237,50 @@ int create_and_bind_passive_socket(int port_number) {
 
     return server_sockfd;
 }
+
+///===========================================================================================
+// thread
+void *snapshot_thread_function(void *arg) {
+    // só para não relamar (warning)
+    
+    struct timeval start_time, end_time;
+    long elapsed_time, sleep_time;
+
+    while (true) {
+        // 1. Marca o início do ciclo
+        gettimeofday(&start_time, NULL);
+
+        SnapShot snapshot = generate_snapshot();
+        PacketSnapshot packet = create_snapshot_packet(&snapshot);
+
+        for(int i = 0; i < MAX_PLAYERS; i++) {
+            errno = 0;
+            if(player_is_connected(&players_connections[i].player)) {  
+                send_packet(players_connections[i].fd, SNAPSHOT, &packet);
+                
+                if(errno == EPIPE) {
+                    disconnect_player(&players_connections[i].player);
+                    close(players_connections[i].fd);
+                }
+            }
+        }
+        // ---------------------------
+
+        // 2. Marca o fim do ciclo e calcula quanto tempo o trabalho demorou
+        gettimeofday(&end_time, NULL);
+        elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000000 + 
+                       (end_time.tv_usec - start_time.tv_usec);
+
+        // 3. Calcula quanto tempo sobra para completar os 16.6ms
+        sleep_time = TIME_PER_FRAME - elapsed_time;
+
+        // 4. Se sobrou tempo, a thread dorme o restante. 
+        if (sleep_time > 0) {
+            usleep(sleep_time);
+        }
+    }
+}
+
+
+
+// END THREADS ===========================

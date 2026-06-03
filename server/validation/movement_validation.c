@@ -6,7 +6,7 @@
 Vector2 VerifyCollisionWithWalls(Player *player, Vector2 playerMovement)
 {
     Vector2 PlayerNextPosition = (Vector2){0, 0};
-    Vector2 playerPosition = get_player_position(*player);
+    Vector2 playerPosition = get_player_position(player);
 
 
     if (playerPosition.x + playerMovement.x > 0 && playerPosition.x + PLAYER_WIDTH + playerMovement.x < MAP_WIDTH)

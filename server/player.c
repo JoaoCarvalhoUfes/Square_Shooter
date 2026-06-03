@@ -7,7 +7,7 @@ Player player_create(const char *name, int id, Vector2 player_position)
     Player p;
 
     p.id = id;
-    p.name = strdup(name);
+    strcpy(p.name, name);
     p.life = MAX_PLAYER_LIFE;
     p.is_connected = true;
 
@@ -18,9 +18,14 @@ Player player_create(const char *name, int id, Vector2 player_position)
     return p;
 }
 
-Vector2 get_player_position(Player p)
+Vector2 get_player_position(Player *p)
 {
-    return p.position;
+    return p->position;
+}
+
+char *get_player_name(Player *p)
+{
+    return p->name;
 }
 
 void player_move(Player *p, Vector2 direction)

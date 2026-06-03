@@ -19,6 +19,7 @@
 #define MOVE_INTERPOLATION_FACTOR 0.10f
 
 #define BUFFER_SIZE 4000 // 4kB
+#define FONT_SIZE 16
 
 // ========= STRUCTS ==============
 typedef struct {

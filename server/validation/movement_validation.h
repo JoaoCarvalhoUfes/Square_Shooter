@@ -4,7 +4,7 @@
 #include "../player.h"
 
 // Return the final position
-Vector2 VerifyCollisionWithWalls(Player player, Vector2 playerMovement);
+Vector2 VerifyCollisionWithWalls(Player *player, Vector2 playerMovement);
 
 
 

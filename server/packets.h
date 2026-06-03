@@ -24,9 +24,14 @@ typedef struct {
 
 typedef struct {
     type_packet type;
-    SnapShotGame snapshot;
+    SnapShot snapshot;
 } PacketSnapshot;
 
+int get_packet_size(type_packet type);
+void send_packet(int dst_socket, type_packet type, void *packet);
 
+PacketMove create_movement_packet(int player_id, Vector2 delta_movement);
+PacketSnapshot create_snapshot_packet(SnapShot *snapshot);
+PacketJoinAccept create_join_accept_packet(int player_id);
 
 #endif

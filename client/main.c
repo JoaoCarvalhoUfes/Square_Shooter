@@ -17,12 +17,13 @@
 #include "../config.h"
 #include "./controller/client_controller.h"
 
+#define MAX_INPUT_CHARS 8
+
 // ==================================================================
 // GLOBAL GAME
 ClientGame global_game_instance = {
     .num_bytes_in_buf = 0,
-    .client_player_id = -1
-};
+    .client_player_id = -1};
 // ==================================================================
 
 int connect_to_server(char *hostname, int port_number);
@@ -33,11 +34,15 @@ void draw_player(char *player_name, Vector2 player_position);
 
 void init_setup();
 
+// Tela de entrada de nome
+void name_input_screen(int server_fd);
+
 int main(int argc, char *argv[])
 {
     // ============== SERVIDOR ==============
     // Políticas de servidor
-    if(argc < 3) {
+    if (argc < 3)
+    {
         fprintf(stderr, "Usage %s hostname port\n", argv[0]);
         exit(1);
     }
@@ -48,25 +53,33 @@ int main(int argc, char *argv[])
     int player_id = -1;
 
     // =====================================
-    // Se chegar aqui, conectou ao server, le os pacotes no buffer 
+    // Se chegar aqui, conectou ao server, le os pacotes no buffer
     // (o primeiro a chegar será) o pacote de join accept.
     // ==============
     read_packets(server_fd, true);
 
     init_setup();
 
+    // Tela de entrada de nome antes do jogo começar
+    name_input_screen(server_fd);
+
+    // Pega o player_id após nome ser inserido
+    player_id = global_game_instance.client_player_id;
+
     // NOVO: Configurando a Câmera 2D
     Camera2D camera = {0};
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
-
+    int framesCounter = 0;
     while (!WindowShouldClose())
     {
+        framesCounter++;
         // Lê o snapshot do game
         read_packets(server_fd, false);
 
-        if(player_id < 0) player_id = global_game_instance.client_player_id;
+        if (player_id < 0)
+            player_id = global_game_instance.client_player_id;
 
         // Salva a diferença de posição
         Vector2 delta_movement = process_delta_movement();
@@ -82,11 +95,10 @@ int main(int argc, char *argv[])
         // Move online
         request_move_player(server_fd, player_id, delta_movement);
 
-
         // Configuração de câmera
         Vector2 current_pos = get_player_position(&global_game_instance.list_all_players[player_id]);
         // Coloca o target no meio da tela
-        camera.offset = (Vector2){GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f}; 
+        camera.offset = (Vector2){GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f};
         // Atualiza o alvo da câmera para ser o centro do player
         camera.target = (Vector2){current_pos.x + (PLAYER_WIDTH / 2.0f), current_pos.y + (PLAYER_HEIGHT / 2.0f)};
 
@@ -119,10 +131,12 @@ int main(int argc, char *argv[])
         DrawRectangleLines(0, 0, MAP_WIDTH, MAP_HEIGHT, RED);
 
         // Desenha todos os players
-        for(int i = 0; i < MAX_PLAYERS; i++) {
+        for (int i = 0; i < MAX_PLAYERS; i++)
+        {
             Player *p = &global_game_instance.list_all_players[i];
-            if(player_is_connected(p)) {
-                //DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
+            if (player_is_connected(p))
+            {
+                // DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
                 draw_player(get_player_name(p), get_player_position(p));
             }
         }
@@ -140,6 +154,89 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+// =======================================
+// TELA DE ENTRADA DE NOME
+// =======================================
+void name_input_screen(int server_fd)
+{
+    char name[MAX_INPUT_CHARS + 1] = "\0";
+    int letterCount = 0;
+    int framesCounter = 0;
+    bool name_submitted = false;
+
+    while (!WindowShouldClose() && !name_submitted)
+    {
+        framesCounter++;
+
+        // Lê input do teclado
+        int key = GetCharPressed();
+
+        // Check if more characters have been pressed on the same frame
+        while (key > 0)
+        {
+            // NOTE: Only allow keys in range [32..125] (printable characters)
+            if ((key >= 32) && (key <= 125) && (letterCount < MAX_INPUT_CHARS))
+            {
+                name[letterCount] = (char)key;
+                name[letterCount + 1] = '\0'; // Add null terminator
+                letterCount++;
+            }
+
+            key = GetCharPressed(); // Check next character in the queue
+        }
+
+        // Handle backspace functionality
+        if (IsKeyPressed(KEY_BACKSPACE))
+        {
+            letterCount--;
+            if (letterCount < 0)
+                letterCount = 0;
+            name[letterCount] = '\0';
+        }
+
+        // Handle ENTER to confirm name
+        if (IsKeyPressed(KEY_ENTER) && letterCount > 0)
+        {
+            // Atualiza o nome do player na struct
+            Player *my_player = &global_game_instance.list_all_players[global_game_instance.client_player_id];
+            player_set_name(my_player, name);
+            name_submitted = true;
+        }
+
+        // 2. DESENHO (Draw)
+        BeginDrawing();
+        ClearBackground(DARKGRAY);
+
+        // Desenha o pedido de nome do jogador - Tela monótona
+        DrawText("ENTER YOUR NAME:", 240, 140, 20, LIGHTGRAY);
+
+        // Draw the input box outline
+        DrawRectangleLines(240, 180, 320, 50, LIGHTGRAY);
+
+        // Draw the text typed by the user
+        DrawText(name, 250, 192, 24, WHITE);
+
+        // Draw a blinking underscore cursor if under character limit
+        if (letterCount < MAX_INPUT_CHARS)
+        {
+            // Blink every 30 frames (0.5 seconds at 60 FPS)
+            if (((framesCounter / 30) % 2) == 0)
+            {
+                DrawText("_", 250 + MeasureText(name, 24), 192, 24, WHITE);
+            }
+        }
+        else
+        {
+            DrawText("Press BACKSPACE to delete", 240, 250, 20, RED);
+        }
+
+        DrawText("Press ENTER to confirm", 240, 300, 20, YELLOW);
+        DrawFPS(10, 10);
+
+        EndDrawing();
+    }
+}
+
 void init_setup()
 {
     InitWindow(800, 400, WINDOW_NAME);
@@ -147,41 +244,46 @@ void init_setup()
 }
 // =======================================
 // player
-void draw_player(char *player_name, Vector2 player_position) {
+void draw_player(char *player_name, Vector2 player_position)
+{
     // Calcula a posição do Texto
     // Medimos a largura do texto para centralizar perfeitamente acima do quadrado
     int textWidth = MeasureText(player_name, FONT_SIZE);
-    
+
     // X centralizado: centro do player menos a metade da largura do texto
     int textX = player_position.x + (PLAYER_WIDTH / 2) - (textWidth / 2);
-    
+
     // Y acima do player: Y do player menos a altura da fonte e uma folga (ex: 10 pixels)
     int textY = player_position.y - FONT_SIZE - 10;
-    
+
     DrawText(player_name, textX, textY, FONT_SIZE, BLACK);
     DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
 }
 
-
-
 // =======================================
 // movement interpolate
-void positions_players_interpolate(int player_id) {
-    for(int i = 0; i < MAX_PLAYERS; i++) {
-    Player *p = &global_game_instance.list_all_players[i];
-        if(player_is_connected(p)) {
-            if(i == player_id) continue;
-            else {
+void positions_players_interpolate(int player_id)
+{
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        Player *p = &global_game_instance.list_all_players[i];
+        if (player_is_connected(p))
+        {
+            if (i == player_id)
+                continue;
+            else
+            {
                 p->position = Vector2Lerp(p->position, p->target_position, MOVE_INTERPOLATION_FACTOR);
             }
         }
     }
 }
 
-Vector2 process_delta_movement() {
+Vector2 process_delta_movement()
+{
     Vector2 delta_movement = (Vector2){0, 0};
 
-    if (IsKeyDown(KEY_A)) 
+    if (IsKeyDown(KEY_A))
         delta_movement.x -= 1;
     if (IsKeyDown(KEY_S))
         delta_movement.y += 1;
@@ -193,44 +295,51 @@ Vector2 process_delta_movement() {
     return delta_movement;
 }
 
-
-
 // ==============================================================================
 // SOCKETS CONFIGURATION
-void read_packets(int server_fd, bool syscall_block) {
+void read_packets(int server_fd, bool syscall_block)
+{
     int n_bytes = -1;
-    if(syscall_block) {
+    if (syscall_block)
+    {
         n_bytes = read(server_fd, (global_game_instance.buffer + global_game_instance.num_bytes_in_buf), BUFFER_SIZE - global_game_instance.num_bytes_in_buf);
-    } else {
-        n_bytes = recv(server_fd, 
-                        global_game_instance.buffer + global_game_instance.num_bytes_in_buf, 
-                        BUFFER_SIZE - global_game_instance.num_bytes_in_buf, 
-                        MSG_DONTWAIT);
+    }
+    else
+    {
+        n_bytes = recv(server_fd,
+                       global_game_instance.buffer + global_game_instance.num_bytes_in_buf,
+                       BUFFER_SIZE - global_game_instance.num_bytes_in_buf,
+                       MSG_DONTWAIT);
     }
 
     // Se houve erro de leitura, retorna
-    if(n_bytes < 0) return;
+    if (n_bytes < 0)
+        return;
 
     // Atualiza a quantidade de bytes no buffer
     global_game_instance.num_bytes_in_buf += n_bytes;
 
     // Obs.: O tipo do pacote é a primeira informação e tem 4 bytes.
-    while(global_game_instance.num_bytes_in_buf >= 4) {
+    while (global_game_instance.num_bytes_in_buf >= 4)
+    {
         type_packet type = *(int *)(global_game_instance.buffer);
         int packet_size = get_packet_size(type);
 
         // Leitura de pacote parcialmente recebido
-        if(global_game_instance.num_bytes_in_buf < packet_size) return;
+        if (global_game_instance.num_bytes_in_buf < packet_size)
+            return;
 
         // Se for de movimento, faz o casting
-        if(type == JOIN_ACCEPT) {
+        if (type == JOIN_ACCEPT)
+        {
             PacketJoinAccept packet;
-            memcpy(&packet, global_game_instance. buffer, sizeof(PacketJoinAccept));
+            memcpy(&packet, global_game_instance.buffer, sizeof(PacketJoinAccept));
             process_join_packet(&packet, &global_game_instance);
         }
-        else if(type == SNAPSHOT) {
+        else if (type == SNAPSHOT)
+        {
             PacketSnapshot packet;
-            memcpy(&packet, global_game_instance. buffer, sizeof(PacketSnapshot));
+            memcpy(&packet, global_game_instance.buffer, sizeof(PacketSnapshot));
             process_snapshot_packet(&packet, &global_game_instance);
         }
 
@@ -244,21 +353,23 @@ void read_packets(int server_fd, bool syscall_block) {
 
 //
 
-
 // Retorna o descritor de arquivo do servidor
-int connect_to_server(char *hostname, int port_number) {
+int connect_to_server(char *hostname, int port_number)
+{
     int server_fd;
     struct sockaddr_in server_address;
     struct hostent *server;
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
+    if (server_fd < 0)
+    {
         perror("ERROR opening socket");
         exit(1);
     }
 
     server = gethostbyname(hostname);
-    if (server == NULL) {
+    if (server == NULL)
+    {
         perror("Error, no such rost");
         exit(1);
     }
@@ -272,7 +383,8 @@ int connect_to_server(char *hostname, int port_number) {
     server_address.sin_port = htons(port_number);
 
     // conectando ao servidor
-    if (connect(server_fd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+    if (connect(server_fd, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
+    {
         perror("Connection failed");
         exit(1);
     }

@@ -1,5 +1,6 @@
 #include "./packets.h"
 #include "./unistd.h"
+#include "./string.h"
 
 int get_packet_size(type_packet type) {
     if(type == MOVEMENT) {
@@ -8,6 +9,8 @@ int get_packet_size(type_packet type) {
         return sizeof(PacketJoinAccept);
     } else if (type == SNAPSHOT) {
         return sizeof(PacketSnapshot);
+    } else  if (type == JOIN_REQUEST){
+        return sizeof(PacketJoinRequest);
     } else {
         return 0;
     }
@@ -37,6 +40,15 @@ PacketJoinAccept create_join_accept_packet(int player_id) {
         .type = JOIN_ACCEPT,
         .player_id = player_id,
     };
+
+    return p;
+}
+
+PacketJoinRequest create_join_resquest_packet(char *name) {
+    PacketJoinRequest p = {
+        .type = JOIN_REQUEST
+    };
+    strcpy(p.name, name);
 
     return p;
 }

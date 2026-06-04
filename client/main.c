@@ -17,8 +17,6 @@
 #include "../config.h"
 #include "./controller/client_controller.h"
 
-#define MAX_INPUT_CHARS 8
-
 // ==================================================================
 // GLOBAL GAME
 ClientGame global_game_instance = {
@@ -35,33 +33,37 @@ void draw_player(char *player_name, Vector2 player_position);
 void init_setup();
 
 // Tela de entrada de nome
-void name_input_screen(int server_fd);
+void name_input_screen(char *buffer);
 
 int main(int argc, char *argv[])
 {
-    // ============== SERVIDOR ==============
-    // Políticas de servidor
     if (argc < 3)
     {
         fprintf(stderr, "Usage %s hostname port\n", argv[0]);
         exit(1);
     }
 
+    // Tela de entrada que solicita o nome antes do jogo começar
+    init_setup();
+    char buffer[MAX_INPUT_CHARS];
+    name_input_screen(buffer);
+
+    // ============== SERVIDOR ==============
+    // Políticas de servidor
     char *hostname = argv[1];
     int port_number = atoi(argv[2]);
+
     int server_fd = connect_to_server(hostname, port_number);
     int player_id = -1;
 
     // =====================================
-    // Se chegar aqui, conectou ao server, le os pacotes no buffer
-    // (o primeiro a chegar será) o pacote de join accept.
-    // ==============
+    // Se chegar aqui, esbeleceu conexão com o server. O primeiro passo
+    // é enviar um pacote de request join. E aguardar o accept join.
+    // =====================================
+    request_join(server_fd, buffer);
+
+    // Processa os pacotes devolvidos (request accept e, possivelmente, um snapshot)
     read_packets(server_fd, true);
-
-    init_setup();
-
-    // Tela de entrada de nome antes do jogo começar
-    name_input_screen(server_fd);
 
     // Pega o player_id após nome ser inserido
     player_id = global_game_instance.client_player_id;
@@ -71,10 +73,8 @@ int main(int argc, char *argv[])
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
-    int framesCounter = 0;
     while (!WindowShouldClose())
     {
-        framesCounter++;
         // Lê o snapshot do game
         read_packets(server_fd, false);
 
@@ -136,7 +136,6 @@ int main(int argc, char *argv[])
             Player *p = &global_game_instance.list_all_players[i];
             if (player_is_connected(p))
             {
-                // DrawRectangleV(get_player_position(p), (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
                 draw_player(get_player_name(p), get_player_position(p));
             }
         }
@@ -157,7 +156,7 @@ int main(int argc, char *argv[])
 // =======================================
 // TELA DE ENTRADA DE NOME
 // =======================================
-void name_input_screen(int server_fd)
+void name_input_screen(char *buffer)
 {
     char name[MAX_INPUT_CHARS + 1] = "\0";
     int letterCount = 0;
@@ -197,9 +196,8 @@ void name_input_screen(int server_fd)
         // Handle ENTER to confirm name
         if (IsKeyPressed(KEY_ENTER) && letterCount > 0)
         {
-            // Atualiza o nome do player na struct
-            Player *my_player = &global_game_instance.list_all_players[global_game_instance.client_player_id];
-            player_set_name(my_player, name);
+            // atualiza o buffer com o nome setado
+            strcpy(buffer, name);
             name_submitted = true;
         }
 
@@ -256,7 +254,7 @@ void draw_player(char *player_name, Vector2 player_position)
     // Y acima do player: Y do player menos a altura da fonte e uma folga (ex: 10 pixels)
     int textY = player_position.y - FONT_SIZE - 10;
 
-    DrawText(player_name, textX, textY, FONT_SIZE, BLACK);
+    DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);
     DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
 }
 
@@ -334,7 +332,7 @@ void read_packets(int server_fd, bool syscall_block)
         {
             PacketJoinAccept packet;
             memcpy(&packet, global_game_instance.buffer, sizeof(PacketJoinAccept));
-            process_join_packet(&packet, &global_game_instance);
+            process_join_accept_packet(&packet, &global_game_instance);
         }
         else if (type == SNAPSHOT)
         {
@@ -351,7 +349,7 @@ void read_packets(int server_fd, bool syscall_block)
     }
 }
 
-//
+// ====================================
 
 // Retorna o descritor de arquivo do servidor
 int connect_to_server(char *hostname, int port_number)

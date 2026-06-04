@@ -20,6 +20,8 @@
 
 #define BUFFER_SIZE 4000 // 4kB
 #define FONT_SIZE 16
+#define MAX_INPUT_CHARS 8
+#define FONT_COLOR WHITE
 
 // ========= STRUCTS ==============
 typedef struct {

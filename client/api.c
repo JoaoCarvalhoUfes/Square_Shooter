@@ -24,3 +24,8 @@ void request_move_player(int server_sockfd, int player_id, Vector2 delta_movemen
     PacketMove packet = create_movement_packet(player_id, delta_movement);
     send_packet(server_sockfd, MOVEMENT, &packet);
 }
+
+void request_join(int server_sockfd, char *name) {
+    PacketJoinRequest packet = create_join_resquest_packet(name);
+    send_packet(server_sockfd, JOIN_REQUEST, &packet);
+}

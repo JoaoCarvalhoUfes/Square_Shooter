@@ -7,7 +7,9 @@ typedef struct player Player;
 struct player
 {
     int id;
-    char name[50];
+
+    // tem q colocar constante aqui (ainda não fiz por problemas de import circular)
+    char name[8];
     bool is_connected;
 
     int life;

@@ -28,19 +28,27 @@ char *get_player_name(Player *p)
     return p->name;
 }
 
+void player_set_name(Player *p, const char *name)
+{
+    strcpy(p->name, name);
+}
+
 void player_move(Player *p, Vector2 direction)
 {
     p->position = direction;
 }
 
-void connect_player(Player *p) {
+void connect_player(Player *p)
+{
     p->is_connected = true;
 }
 
-void disconnect_player(Player *p) {
+void disconnect_player(Player *p)
+{
     p->is_connected = false;
 }
 
-bool player_is_connected(Player *p) {
+bool player_is_connected(Player *p)
+{
     return p->is_connected;
 }

@@ -39,11 +39,12 @@ PlayerConnection players_connections[MAX_PLAYERS];
 
 // THREADS ===========================
 void *snapshot_thread_function(void *arg);
+void *create_new_server_player_thread_function(void *arg);
 
 // END THREADS ===========================
 
 int create_and_bind_passive_socket(int port_number);
-void read_packets(PlayerConnection *player_connection);
+void read_packets(PlayerConnection *player_connection, bool syscall_block);
 static void create_new_server_player(int client_fd);
 SnapShot generate_snapshot();
 
@@ -85,6 +86,7 @@ int main(int argc, char *argv[])
     // ===================
     // Iniciando threads
     pthread_t snapshot_thread;
+    pthread_t new_player_thread;
     pthread_create(&snapshot_thread, NULL, snapshot_thread_function, NULL);
 
     // ==================
@@ -111,7 +113,7 @@ int main(int argc, char *argv[])
         // -> Como quero que o jogo rode a 60fps, vou fazer um timeout no select para que o select desbloqueie 60x por segundo.
         struct timeval timeout;
         timeout.tv_sec = 0;               // 0 segundos
-        timeout.tv_usec = TIME_PER_FRAME; // 0 microssegundos
+        timeout.tv_usec = TIME_PER_FRAME;
 
         select(max_fd + 1, &set_fds, NULL, NULL, &timeout);
 
@@ -122,7 +124,8 @@ int main(int argc, char *argv[])
             client_sockfd = accept(server_sockfd, NULL, NULL);
 
             // Cria e guarda player. Atenção: envia informações iniciais ao player
-            create_new_server_player(client_sockfd);
+            pthread_create(&new_player_thread, NULL, create_new_server_player_thread_function, &client_sockfd);
+            // create_new_server_player(client_sockfd);
         }
 
         // Caso 2. A comunicação aconteceu por outro socket (que não é o passivo)
@@ -131,11 +134,10 @@ int main(int argc, char *argv[])
             // Encontrou socket que se comunicou
             if (player_is_connected(&players_connections[i].player) && FD_ISSET(players_connections[i].fd, &set_fds))
             {
-                read_packets(&players_connections[i]);
+                read_packets(&players_connections[i], false);
             }
         }
 
-        // tirei o snapshot e deixei em uma thread secundaria
     }
 }
 
@@ -152,6 +154,10 @@ static void create_new_server_player(int client_fd)
             players_connections[i].fd = client_fd;
             players_connections[i].num_bytes_in_buf = 0;
 
+            // Lendo pacote de join request. Fica bloqueado aqui.
+            read_packets(&players_connections[i], true);
+
+            // Ao desbloquear, faz a conexão do player no jogo.
             // Faz a conexão do player por último para evitar inconsistencias
             connect_player(&players_connections[i].player);
 
@@ -182,12 +188,16 @@ SnapShot generate_snapshot()
 // ============ FINAL PLAYER ENTER ======================
 
 // ============ LEITURA DE PACOTE =======================
-void read_packets(PlayerConnection *player_connection)
-{
+void read_packets(PlayerConnection *player_connection, bool syscall_block)
+{   
     // Obs.: Offset para não sobrescrever o buffer local.
     // Lê até (no máximo) o que falta para completar o buffer
-    // int n_bytes = read(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf);
-    int n_bytes = recv(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf, MSG_DONTWAIT);
+    int n_bytes = -1;
+    if(syscall_block == true) {
+        n_bytes = read(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf);
+    } else {
+        n_bytes = recv(player_connection->fd, (player_connection->buffer + player_connection->num_bytes_in_buf), BUFFER_SIZE - player_connection->num_bytes_in_buf, MSG_DONTWAIT);
+    }
 
     // Se houve erro de leitura, retorna
     if (n_bytes < 0)
@@ -209,12 +219,14 @@ void read_packets(PlayerConnection *player_connection)
         // Se for de movimento, faz o casting
         if (type == MOVEMENT)
         {
-            // PacketMove packet = *(PacketMove *)(player_connection->buffer);
-            PacketMove packet;
-            memcpy(&packet, player_connection->buffer, sizeof(PacketMove));
+            PacketMove packet = *(PacketMove *)(player_connection->buffer);
             process_movement_packet(&player_connection->player, packet);
         }
-
+        // Se for de join request, pega o nome e salva
+        else if(type == JOIN_REQUEST) { 
+            PacketJoinRequest packet = *(PacketJoinRequest *)(player_connection->buffer);
+            strcpy(player_connection->player.name, packet.name);
+        }
         //===============================================================================
         // Deslocando os bytes restantes para o começo do buffer
         int bytes_left = player_connection->num_bytes_in_buf - packet_size;
@@ -301,6 +313,15 @@ void *snapshot_thread_function(void *arg)
             usleep(sleep_time);
         }
     }
+
+    return NULL;
 }
 
+
+void *create_new_server_player_thread_function(void *arg) {
+    int client_fd = *(int *)arg;
+    create_new_server_player(client_fd);
+
+    return NULL;
+}
 // END THREADS ===========================

@@ -5,11 +5,17 @@
 #include "../config.h"
 
 typedef enum {
+    JOIN_REQUEST,
     JOIN_ACCEPT,
     MOVEMENT,
     SNAPSHOT,
-    SHOOT
+    SHOOT,
 } type_packet;
+
+typedef struct {
+    type_packet type;
+    char name[MAX_INPUT_CHARS];
+} PacketJoinRequest;
 
 typedef struct {
     type_packet type;
@@ -33,5 +39,6 @@ void send_packet(int dst_socket, type_packet type, void *packet);
 PacketMove create_movement_packet(int player_id, Vector2 delta_movement);
 PacketSnapshot create_snapshot_packet(SnapShot *snapshot);
 PacketJoinAccept create_join_accept_packet(int player_id);
+PacketJoinRequest create_join_resquest_packet(char *name);
 
 #endif

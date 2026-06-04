@@ -6,13 +6,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <sys/select.h>
 #include <sys/time.h>
 #include <time.h>
 #include <stdbool.h>
 #include <signal.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sys/epoll.h>
 
 // includes que precisam melhorar a organização
 #include "../config.h"
@@ -22,6 +22,7 @@
 
 // Definindo o tickrate (60 vezes por segundo)
 #define TIME_PER_FRAME 16667
+#define MAX_EVENTS (MAX_PLAYERS + 1)
 
 typedef struct
 {
@@ -35,6 +36,7 @@ typedef struct
 
 // GLOBAL DATABASE ===========================
 PlayerConnection players_connections[MAX_PLAYERS];
+int epoll_fd;
 // END GLOBAL DATABASE ===========================
 
 // THREADS ===========================
@@ -64,9 +66,12 @@ int main(int argc, char *argv[])
     for (int i = 0; i < MAX_PLAYERS; i++)
         disconnect_player(&players_connections[i].player);
 
-    // Criando set para escutar quando algum cliente se comunicar
-    fd_set set_fds; // set de file descriptors
-    int max_fd;     // maior file descriptor
+    // Criando epoll para escutar quando algum cliente se comunicar
+    epoll_fd = epoll_create1(0);
+    if(epoll_fd == -1) {
+        perror("Erro ao criar epoll");
+        exit(1);
+    }
     // ===================
 
     // ===================
@@ -82,63 +87,51 @@ int main(int argc, char *argv[])
 
     // ===================
     // LOOP PRINCIPAL
+    // Adicionando socket passivo no epoll
+    struct epoll_event ev = {
+        .events = EPOLLIN,
+        .data.ptr = &server_sockfd 
+    };
+    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_sockfd, &ev) == -1) {
+        perror("Erro ao adicionar o socket passivo ao epoll.\n");
+        exit(1);
+    }
+
+    struct epoll_event events[MAX_EVENTS];
 
     // ===================
     // Iniciando threads
     pthread_t snapshot_thread;
     pthread_t new_player_thread;
     pthread_create(&snapshot_thread, NULL, snapshot_thread_function, NULL);
-
     // ==================
 
     while (1)
     {
-        // Configurando set de fds. (Reseta lista a cada iteração e adiciona os FDs alvo)
-        FD_ZERO(&set_fds);
-        // -> Adicionando socket principal ao set de sockets
-        FD_SET(server_sockfd, &set_fds);
-        max_fd = server_sockfd;
+        
+        // Aguarda atividade de um dos sockets do epoll. Fica bloqueado aqui por, no maximo, o tempo do timeout
+        // Observação:        
+        int num_events = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
 
-        // -> Adicionando cada player ativo ao set de sockets
-        for (int i = 0; i < MAX_PLAYERS; i++)
-            if (player_is_connected(&players_connections[i].player))
-            {
-                FD_SET(players_connections[i].fd, &set_fds);
-                if (players_connections[i].fd > max_fd)
-                    max_fd = players_connections[i].fd;
+        for(int i = 0; i < num_events; i++) {
+            // Caso 1. Socket principal. Um novo player se conectou
+            // Ja adiciona ao epoll após criar
+            if(events[i].data.ptr == &server_sockfd) {
+                client_sockfd = accept(server_sockfd, NULL, NULL);
+                pthread_create(&new_player_thread, NULL, create_new_server_player_thread_function, &client_sockfd);
             }
-
-        // Aguarda atividade de um dos sockets do set. Fica bloqueado aqui.
-        // Observação:
-        // -> Como quero que o jogo rode a 60fps, vou fazer um timeout no select para que o select desbloqueie 60x por segundo.
-        struct timeval timeout;
-        timeout.tv_sec = 0;               // 0 segundos
-        timeout.tv_usec = TIME_PER_FRAME;
-
-        select(max_fd + 1, &set_fds, NULL, NULL, &timeout);
-
-        // Caso 1. Socket principal. Um novo player se conectou
-        if (FD_ISSET(server_sockfd, &set_fds))
-        {
-            // -> Aceita conexao
-            client_sockfd = accept(server_sockfd, NULL, NULL);
-
-            // Cria e guarda player. Atenção: envia informações iniciais ao player
-            pthread_create(&new_player_thread, NULL, create_new_server_player_thread_function, &client_sockfd);
-            // create_new_server_player(client_sockfd);
-        }
-
-        // Caso 2. A comunicação aconteceu por outro socket (que não é o passivo)
-        for (int i = 0; i < MAX_PLAYERS; i++)
-        {
-            // Encontrou socket que se comunicou
-            if (player_is_connected(&players_connections[i].player) && FD_ISSET(players_connections[i].fd, &set_fds))
-            {
-                read_packets(&players_connections[i], false);
+            // Caso 2. A comunicação aconteceu por outro socket (que não é o passivo)
+            else {
+                PlayerConnection *conn = (PlayerConnection *) events[i].data.ptr;
+                read_packets(conn, false);
             }
         }
-
     }
+
+
+    // Fechando conexao
+    close(epoll_fd);
+    close(server_sockfd);
 }
 
 // ============ PLAYER ENTER ========================
@@ -161,6 +154,13 @@ static void create_new_server_player(int client_fd)
             // Faz a conexão do player por último para evitar inconsistencias
             connect_player(&players_connections[i].player);
 
+            // Adiciona a conexa do novo player ao manipulador (epoll) de fd's
+            struct epoll_event client_ev = {
+                .data.ptr = &players_connections[i],
+                .events = EPOLLIN
+            };
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_ev);
+
             // Enviando pacote de join accept
             PacketJoinAccept packet = create_join_accept_packet(player_id);
             send_packet(client_fd, JOIN_ACCEPT, &packet);
@@ -175,6 +175,9 @@ static void create_new_server_player(int client_fd)
 SnapShot generate_snapshot()
 {
     SnapShot snapshot;
+
+    // (zera todos os slots de jogadores) (valgrind não reclamar de lixo)
+    memset(&snapshot, 0, sizeof(SnapShot));
 
     // Separing players
     for (int i = 0; i < MAX_PLAYERS; i++)
@@ -279,8 +282,9 @@ void *snapshot_thread_function(void *arg)
     {
         // 1. Marca o início do ciclo
         gettimeofday(&start_time, NULL);
-
-        SnapShot snapshot = generate_snapshot();
+        SnapShot snapshot;
+        memset(&snapshot, 0, sizeof(SnapShot));
+        snapshot = generate_snapshot();
         PacketSnapshot packet = create_snapshot_packet(&snapshot);
 
         for (int i = 0; i < MAX_PLAYERS; i++)
@@ -291,8 +295,12 @@ void *snapshot_thread_function(void *arg)
                 send_packet(players_connections[i].fd, SNAPSHOT, &packet);
 
                 if (errno == EPIPE)
-                {
+                {   
+                    // Desconectando
                     disconnect_player(&players_connections[i].player);
+                    // Removendo do epoll
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, players_connections[i].fd, NULL);
+                    // Fechando fd
                     close(players_connections[i].fd);
                 }
             }

@@ -21,8 +21,10 @@ void process_snapshot_packet(PacketSnapshot *packet, ClientGame *client_game)
         strcpy(client_game->list_all_players[i].name, packet->snapshot.list_all_players[i].name);
         
         // A mira do client ja eh feita localmente
-        if(client_game->client_player_id != i)
+        if(client_game->client_player_id != i) {
             memcpy(&client_game->list_all_players[i].aim, &packet->snapshot.list_all_players[i].aim, sizeof(Aim));
+            client_game->list_all_players[i].weapon = packet->snapshot.list_all_players[i].weapon;
+        }
     }
 }
 

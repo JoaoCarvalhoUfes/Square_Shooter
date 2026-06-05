@@ -16,19 +16,14 @@ Player player_create(const char *name, int id, Vector2 player_position)
     p.position.y = player_position.y - (PLAYER_HEIGHT) / 2;
 
     aim_init(&p.aim, PISTOL_AIM_RADIUS, WHITE);
-    
-    return p;
-}
+    p.weapon = WEAPON_PISTOL;
 
-void set_player_weapon(Player *p, WeaponType weapon) {
-    p->weapon = weapon;
+    return p;
 }
 
 void set_radius_player_aim(Player *p, float radius) {
     aim_init(&p->aim, radius, WHITE);
 }
-
-#include "stdio.h"
 
 void update_player_aim(Player *p, Camera2D camera) {
     Vector2 player_center = (Vector2){p->position.x + (PLAYER_WIDTH / 2.0f), p->position.y + (PLAYER_HEIGHT / 2.0f)};
@@ -37,10 +32,6 @@ void update_player_aim(Player *p, Camera2D camera) {
 
 Aim *get_player_aim(Player *p) {
     return &p->aim;
-}
-
-WeaponType get_player_weapon(Player *p) {
-    return p->weapon;
 }
 
 Vector2 get_player_aim_position(Player *p) {
@@ -55,6 +46,14 @@ Vector2 get_player_position(Player *p)
 char *get_player_name(Player *p)
 {
     return p->name;
+}
+
+WeaponType get_player_weapon(Player *p) {
+    return p->weapon;
+}
+
+void set_player_weapon(Player *p, WeaponType weapon) {
+    p->weapon = weapon;
 }
 
 void set_player_name(Player *p, const char *name)

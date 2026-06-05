@@ -30,7 +30,12 @@ void request_join(int server_sockfd, char *name) {
     send_packet(server_sockfd, JOIN_REQUEST, &packet);
 }
 
+void request_weapon_update(int server_sockfd, WeaponType weapon) {
+    PacketChangeWeapon packet = create_change_weapon_packet(weapon);
+    send_packet(server_sockfd, CHANGE_WEAPON, &packet);
+}
+
 void request_aim_update(int server_sockfd, Aim *aim) {
     PacketAim packet = create_aim_packet(aim);
-    send_packet(server_sockfd, AIM, &packet);
+    send_packet(server_sockfd, AIM_UPDATE, &packet);
 }

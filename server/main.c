@@ -232,9 +232,14 @@ void read_packets(PlayerConnection *player_connection, bool syscall_block)
             process_join_request_packet(&player_connection->player, packet);
         }
         // Se for de aim, atualiza a mira do jogador
-        else if(type == AIM) {
+        else if(type == AIM_UPDATE) {
             PacketAim *packet = (PacketAim *)(player_connection->buffer);
             process_aim_packet(&player_connection->player, packet);
+        }
+        // Atualiza a arma
+        else if(type == CHANGE_WEAPON) {
+            PacketChangeWeapon *packet = (PacketChangeWeapon *)(player_connection->buffer);
+            process_change_weapon_packet(&player_connection->player, packet);
         }
 
         //===============================================================================

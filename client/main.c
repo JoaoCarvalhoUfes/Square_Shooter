@@ -85,7 +85,6 @@ int main(int argc, char *argv[])
     weapon_init(&sniper, WEAPON_SNIPER);
     Weapon *current_weapon = &pistol;
 
-
     while (!WindowShouldClose())
     {
         // Lê o snapshot do game
@@ -138,13 +137,19 @@ int main(int argc, char *argv[])
         // Troca de arma (1=pistol,2=shotgun,3=sniper)
         if (IsKeyPressed(KEY_ONE)) {
             current_weapon = &pistol;
-            set_radius_player_aim(local_player, PISTOL_AIM_RADIUS);
+            set_player_aim(local_player, WEAPON_PISTOL);
+            set_player_weapon(local_player, WEAPON_PISTOL);
+            request_weapon_update(server_fd, WEAPON_PISTOL);
         } else if (IsKeyPressed(KEY_TWO)) {
             current_weapon = &shotgun;
-            set_radius_player_aim(local_player, SHOTGUN_AIM_RADIUS);
+            set_player_aim(local_player, WEAPON_SHOTGUN);
+            set_player_weapon(local_player, WEAPON_SHOTGUN);
+            request_weapon_update(server_fd, WEAPON_SHOTGUN);
         } else if (IsKeyPressed(KEY_THREE)) {
             current_weapon = &sniper;
-            set_radius_player_aim(local_player, SNIPER_AIM_RADIUS);
+            set_player_aim(local_player, WEAPON_SNIPER);
+            set_player_weapon(local_player, WEAPON_SNIPER);
+            request_weapon_update(server_fd, WEAPON_SNIPER);
         }
         // ====================
 
@@ -302,7 +307,8 @@ void draw_player(Player *p)
     int textY = player_position.y - FONT_SIZE - 10;
 
     // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
-    aim_draw(get_player_aim(p), 1);
+    WeaponType player_weapon = get_player_weapon(p);
+    aim_draw(get_player_aim(p), get_weapon_shape_by_type(player_weapon));
     DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);
     DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
 }

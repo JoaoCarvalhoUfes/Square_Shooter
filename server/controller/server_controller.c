@@ -14,3 +14,7 @@ void process_join_request_packet(Player *player, PacketJoinRequest *packet) {
 void process_aim_packet(Player *player, PacketAim *packet) {
     player->aim = packet->aim;
 }
+
+void process_change_weapon_packet(Player *player, PacketChangeWeapon *packet) {
+    player->weapon = packet->weapon;
+}

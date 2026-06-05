@@ -11,8 +11,10 @@ int get_packet_size(type_packet type) {
         return sizeof(PacketSnapshot);
     } else  if (type == JOIN_REQUEST){
         return sizeof(PacketJoinRequest);
-    } else if (type == AIM) {
+    } else if (type == AIM_UPDATE) {
         return sizeof(PacketAim);
+    } else if (type == CHANGE_WEAPON) {
+        return sizeof(PacketChangeWeapon);
     } else {
         return 0;
     }
@@ -30,7 +32,7 @@ PacketMove create_movement_packet(int player_id, Vector2 delta_movement) {
 
 PacketAim create_aim_packet(Aim *aim) {
     PacketAim p = {
-        .type = SNAPSHOT,
+        .type = AIM_UPDATE,
         .aim = *aim
     };
 
@@ -64,6 +66,14 @@ PacketJoinRequest create_join_resquest_packet(char *name) {
     return p;
 }
 
+PacketChangeWeapon create_change_weapon_packet(WeaponType weapon) {
+    PacketChangeWeapon p = {
+        .type = CHANGE_WEAPON,
+        .weapon = weapon
+    };
+
+    return p;
+}
 
 void send_packet(int dst_socket, type_packet type, void *packet) {
     write(dst_socket, packet, get_packet_size(type));

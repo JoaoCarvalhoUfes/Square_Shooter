@@ -3,13 +3,15 @@
 
 #include "raylib.h"
 #include "../config.h"
+#include "weapon.h"
 
 typedef enum {
     JOIN_REQUEST,
     JOIN_ACCEPT,
     MOVEMENT,
     SNAPSHOT,
-    AIM,
+    AIM_UPDATE,
+    CHANGE_WEAPON,
     SHOOT,
 } type_packet;
 
@@ -30,6 +32,11 @@ typedef struct {
 
 typedef struct {
     type_packet type;
+    WeaponType weapon;
+} PacketChangeWeapon;
+
+typedef struct {
+    type_packet type;
     int player_id;
     Vector2 delta_movement;
 } PacketMove;
@@ -47,5 +54,6 @@ PacketSnapshot create_snapshot_packet(SnapShot *snapshot);
 PacketJoinAccept create_join_accept_packet(int player_id);
 PacketJoinRequest create_join_resquest_packet(char *name);
 PacketAim create_aim_packet(Aim *aim);
+PacketChangeWeapon create_change_weapon_packet(WeaponType weapon);
 
 #endif

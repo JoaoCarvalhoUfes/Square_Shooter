@@ -1,6 +1,6 @@
 #include "./packets.h"
-#include "./unistd.h"
-#include "./string.h"
+#include <./unistd.h>
+#include <string.h>
 
 int get_packet_size(type_packet type) {
     if(type == MOVEMENT) {
@@ -11,6 +11,8 @@ int get_packet_size(type_packet type) {
         return sizeof(PacketSnapshot);
     } else  if (type == JOIN_REQUEST){
         return sizeof(PacketJoinRequest);
+    } else if (type == AIM) {
+        return sizeof(PacketAim);
     } else {
         return 0;
     }
@@ -21,6 +23,15 @@ PacketMove create_movement_packet(int player_id, Vector2 delta_movement) {
         .type = MOVEMENT,
         .player_id = player_id,
         .delta_movement = delta_movement
+    };
+
+    return p;
+}
+
+PacketAim create_aim_packet(Aim *aim) {
+    PacketAim p = {
+        .type = SNAPSHOT,
+        .aim = *aim
     };
 
     return p;

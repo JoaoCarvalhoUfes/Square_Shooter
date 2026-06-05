@@ -18,7 +18,7 @@
 #include "../config.h"
 #include "./player.h"
 #include "./packets.h"
-#include "./controller/movement_controller.h"
+#include "./controller/server_controller.h"
 
 // Definindo o tickrate (60 vezes por segundo)
 #define TIME_PER_FRAME 16667
@@ -222,14 +222,21 @@ void read_packets(PlayerConnection *player_connection, bool syscall_block)
         // Se for de movimento, faz o casting
         if (type == MOVEMENT)
         {
-            PacketMove packet = *(PacketMove *)(player_connection->buffer);
+            PacketMove *packet = (PacketMove *)(player_connection->buffer);
             process_movement_packet(&player_connection->player, packet);
         }
         // Se for de join request, pega o nome e salva
-        else if(type == JOIN_REQUEST) { 
-            PacketJoinRequest packet = *(PacketJoinRequest *)(player_connection->buffer);
-            strcpy(player_connection->player.name, packet.name);
+        else if(type == JOIN_REQUEST)
+        { 
+            PacketJoinRequest *packet = (PacketJoinRequest *)(player_connection->buffer);
+            process_join_request_packet(&player_connection->player, packet);
         }
+        // Se for de aim, atualiza a mira do jogador
+        else if(type == AIM) {
+            PacketAim *packet = (PacketAim *)(player_connection->buffer);
+            process_aim_packet(&player_connection->player, packet);
+        }
+
         //===============================================================================
         // Deslocando os bytes restantes para o começo do buffer
         int bytes_left = player_connection->num_bytes_in_buf - packet_size;

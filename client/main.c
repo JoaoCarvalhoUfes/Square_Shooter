@@ -16,6 +16,8 @@
 #include "./packets.h"
 #include "../config.h"
 #include "./controller/client_controller.h"
+#include "./aim.h"
+#include "./weapon.h"
 
 // ==================================================================
 // GLOBAL GAME
@@ -71,7 +73,18 @@ int main(int argc, char *argv[])
     // NOVO: Configurando a Câmera 2D
     Camera2D camera = {0};
     camera.rotation = 0.0f;
-    camera.zoom = 1.0f;
+    camera.zoom = 0.75f; // zoom intermediário para ver boa parte do mapa
+
+    // Configura a mira (module separado)
+    Aim local_aim;
+    aim_init(&local_aim, PISTOL_AIM_RADIUS, WHITE);
+
+    // Weapons: prepare one of each and a current weapon
+    Weapon pistol, shotgun, sniper;
+    weapon_init(&pistol, WEAPON_PISTOL);
+    weapon_init(&shotgun, WEAPON_SHOTGUN);
+    weapon_init(&sniper, WEAPON_SNIPER);
+    Weapon *current_weapon = &pistol; // default
 
     while (!WindowShouldClose())
     {
@@ -105,6 +118,30 @@ int main(int argc, char *argv[])
         // ===================
         // Interpolação de movimento (para suavizar)
         positions_players_interpolate(player_id);
+        // Atualiza a mira com base na posição do player and camera
+        Vector2 player_center = (Vector2){current_pos.x + (PLAYER_WIDTH / 2.0f), current_pos.y + (PLAYER_HEIGHT / 2.0f)};
+        aim_update(&local_aim, player_center, camera);
+        // Disparo: ao clicar, usa posição da mira para disparar
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            weapon_fire(current_weapon, player_center, local_aim.pos);
+        }
+
+        // Atualiza projeteis
+        float dt = GetFrameTime();
+        weapon_update(current_weapon, dt);
+
+        // Troca de arma (1=pistol,2=shotgun,3=sniper)
+        if (IsKeyPressed(KEY_ONE)) {
+            current_weapon = &pistol;
+            aim_init(&local_aim, PISTOL_AIM_RADIUS, WHITE);
+        } else if (IsKeyPressed(KEY_TWO)) {
+            current_weapon = &shotgun;
+            aim_init(&local_aim, SHOTGUN_AIM_RADIUS, WHITE);
+        } else if (IsKeyPressed(KEY_THREE)) {
+            current_weapon = &sniper;
+            aim_init(&local_aim, SNIPER_AIM_RADIUS, WHITE);
+        }
         // ====================
 
         // 2. DESENHO (Draw)
@@ -139,6 +176,12 @@ int main(int argc, char *argv[])
                 draw_player(get_player_name(p), get_player_position(p));
             }
         }
+
+        // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
+        aim_draw(&local_aim, current_weapon->shape);
+
+        // Desenha projeteis da arma atual
+        weapon_draw(current_weapon);
 
         EndMode2D(); // Termina o modo de câmera
 
@@ -368,7 +411,7 @@ int connect_to_server(char *hostname, int port_number)
     server = gethostbyname(hostname);
     if (server == NULL)
     {
-        perror("Error, no such rost");
+        perror("Error, no such host");
         exit(1);
     }
 

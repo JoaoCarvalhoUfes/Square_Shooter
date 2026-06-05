@@ -5,6 +5,22 @@
 
 static float deg2rad(float d) { return d * (PI / 180.0f); }
 
+int get_weapon_shape_by_type(WeaponType type) {
+    if(type == WEAPON_PISTOL) {
+        return 1;
+    }
+    else if(type == WEAPON_SHOTGUN)
+    {
+        return 2;
+    }
+    else if(type == WEAPON_SNIPER) {
+        return 3;
+    }
+    else {
+        return -1;
+    }
+}
+
 void weapon_init(Weapon *w, WeaponType type)
 {
     w->type = type;

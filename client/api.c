@@ -29,3 +29,8 @@ void request_join(int server_sockfd, char *name) {
     PacketJoinRequest packet = create_join_resquest_packet(name);
     send_packet(server_sockfd, JOIN_REQUEST, &packet);
 }
+
+void request_aim_update(int server_sockfd, Aim *aim) {
+    PacketAim packet = create_aim_packet(aim);
+    send_packet(server_sockfd, AIM, &packet);
+}

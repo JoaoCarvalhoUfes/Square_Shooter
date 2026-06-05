@@ -9,6 +9,7 @@ typedef enum {
     JOIN_ACCEPT,
     MOVEMENT,
     SNAPSHOT,
+    AIM,
     SHOOT,
 } type_packet;
 
@@ -21,6 +22,11 @@ typedef struct {
     type_packet type;
     int player_id;
 } PacketJoinAccept;
+
+typedef struct {
+    type_packet type;
+    Aim aim;
+} PacketAim;
 
 typedef struct {
     type_packet type;
@@ -40,5 +46,6 @@ PacketMove create_movement_packet(int player_id, Vector2 delta_movement);
 PacketSnapshot create_snapshot_packet(SnapShot *snapshot);
 PacketJoinAccept create_join_accept_packet(int player_id);
 PacketJoinRequest create_join_resquest_packet(char *name);
+PacketAim create_aim_packet(Aim *aim);
 
 #endif

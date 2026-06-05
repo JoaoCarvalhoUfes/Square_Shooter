@@ -30,7 +30,7 @@ int connect_to_server(char *hostname, int port_number);
 void read_packets(int server_fd, bool syscall_block);
 void positions_players_interpolate(int player_id);
 Vector2 process_delta_movement();
-void draw_player(char *player_name, Vector2 player_position);
+void draw_player(Player *p);
 
 void init_setup();
 
@@ -76,15 +76,15 @@ int main(int argc, char *argv[])
     camera.zoom = 0.75f; // zoom intermediário para ver boa parte do mapa
 
     // Configura a mira (module separado)
-    Aim local_aim;
-    aim_init(&local_aim, PISTOL_AIM_RADIUS, WHITE);
+    aim_init(&global_game_instance.list_all_players[player_id].aim, PISTOL_AIM_RADIUS, WHITE);
 
     // Weapons: prepare one of each and a current weapon
     Weapon pistol, shotgun, sniper;
     weapon_init(&pistol, WEAPON_PISTOL);
     weapon_init(&shotgun, WEAPON_SHOTGUN);
     weapon_init(&sniper, WEAPON_SNIPER);
-    Weapon *current_weapon = &pistol; // default
+    Weapon *current_weapon = &pistol;
+
 
     while (!WindowShouldClose())
     {
@@ -118,13 +118,17 @@ int main(int argc, char *argv[])
         // ===================
         // Interpolação de movimento (para suavizar)
         positions_players_interpolate(player_id);
+
+        Player *local_player = &global_game_instance.list_all_players[player_id];
+
         // Atualiza a mira com base na posição do player and camera
-        Vector2 player_center = (Vector2){current_pos.x + (PLAYER_WIDTH / 2.0f), current_pos.y + (PLAYER_HEIGHT / 2.0f)};
-        aim_update(&local_aim, player_center, camera);
+        update_player_aim(local_player, camera);
+        request_aim_update(server_fd, get_player_aim(local_player));
+
         // Disparo: ao clicar, usa posição da mira para disparar
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
-            weapon_fire(current_weapon, player_center, local_aim.pos);
+            weapon_fire(current_weapon, get_player_position(local_player), get_player_aim_position(local_player));
         }
 
         // Atualiza projeteis
@@ -134,13 +138,13 @@ int main(int argc, char *argv[])
         // Troca de arma (1=pistol,2=shotgun,3=sniper)
         if (IsKeyPressed(KEY_ONE)) {
             current_weapon = &pistol;
-            aim_init(&local_aim, PISTOL_AIM_RADIUS, WHITE);
+            set_radius_player_aim(local_player, PISTOL_AIM_RADIUS);
         } else if (IsKeyPressed(KEY_TWO)) {
             current_weapon = &shotgun;
-            aim_init(&local_aim, SHOTGUN_AIM_RADIUS, WHITE);
+            set_radius_player_aim(local_player, SHOTGUN_AIM_RADIUS);
         } else if (IsKeyPressed(KEY_THREE)) {
             current_weapon = &sniper;
-            aim_init(&local_aim, SNIPER_AIM_RADIUS, WHITE);
+            set_radius_player_aim(local_player, SNIPER_AIM_RADIUS);
         }
         // ====================
 
@@ -173,12 +177,9 @@ int main(int argc, char *argv[])
             Player *p = &global_game_instance.list_all_players[i];
             if (player_is_connected(p))
             {
-                draw_player(get_player_name(p), get_player_position(p));
+                draw_player(p);
             }
         }
-
-        // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
-        aim_draw(&local_aim, current_weapon->shape);
 
         // Desenha projeteis da arma atual
         weapon_draw(current_weapon);
@@ -285,8 +286,11 @@ void init_setup()
 }
 // =======================================
 // player
-void draw_player(char *player_name, Vector2 player_position)
+void draw_player(Player *p)
 {
+    Vector2 player_position = get_player_position(p);
+    char *player_name = get_player_name(p);
+
     // Calcula a posição do Texto
     // Medimos a largura do texto para centralizar perfeitamente acima do quadrado
     int textWidth = MeasureText(player_name, FONT_SIZE);
@@ -297,6 +301,8 @@ void draw_player(char *player_name, Vector2 player_position)
     // Y acima do player: Y do player menos a altura da fonte e uma folga (ex: 10 pixels)
     int textY = player_position.y - FONT_SIZE - 10;
 
+    // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
+    aim_draw(get_player_aim(p), 1);
     DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);
     DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
 }

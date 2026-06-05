@@ -40,4 +40,6 @@ void weapon_fire(Weapon *w, Vector2 origin, Vector2 aim_pos);
 void weapon_update(Weapon *w, float dt);
 void weapon_draw(Weapon *w);
 
+int get_weapon_shape_by_type(WeaponType type);
+
 #endif

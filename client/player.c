@@ -12,10 +12,29 @@ Player player_create(const char *name, int id, Vector2 player_position)
     p.is_connected = true;
 
     // Correção da posição
-    Vector2 position = {player_position.x - (PLAYER_WIDTH) / 2, player_position.y - (PLAYER_HEIGHT) / 2};
-    p.position = position;
+    p.position.x = player_position.x - (PLAYER_WIDTH) / 2;
+    p.position.y = player_position.y - (PLAYER_HEIGHT) / 2;
+
+    aim_init(&p.aim, PISTOL_AIM_RADIUS, WHITE);
 
     return p;
+}
+
+void set_radius_player_aim(Player *p, float radius) {
+    aim_init(&p->aim, radius, WHITE);
+}
+
+void update_player_aim(Player *p, Camera2D camera) {
+    Vector2 player_center = (Vector2){p->position.x + (PLAYER_WIDTH / 2.0f), p->position.y + (PLAYER_HEIGHT / 2.0f)};
+    aim_update(&p->aim, player_center, camera);
+}
+
+Aim *get_player_aim(Player *p) {
+    return &p->aim;
+}
+
+Vector2 get_player_aim_position(Player *p) {
+    return p->aim.pos;
 }
 
 Vector2 get_player_position(Player *p)
@@ -28,7 +47,7 @@ char *get_player_name(Player *p)
     return p->name;
 }
 
-void player_set_name(Player *p, const char *name)
+void set_player_name(Player *p, const char *name)
 {
     strcpy(p->name, name);
 }

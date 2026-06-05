@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -g
 
 # Bibliotecas de linkagem (Ficam separadas!)
 LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
-TARGET = game
+TARGET = client
 
 # 1. Alvo principal: Agora com TODAS as dependências listadas corretamente
 $(TARGET): main.o player.o packets.o client_controller.o api.o aim.o weapon.o

@@ -7,32 +7,36 @@ LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 TARGET = client
 
 # 1. Alvo principal: Agora com TODAS as dependências listadas corretamente
-$(TARGET): main.o player.o packets.o client_controller.o api.o aim.o weapon.o
-	$(CC) $(CFLAGS) -o $(TARGET) main.o player.o packets.o client_controller.o api.o aim.o weapon.o $(LIBS)
+$(TARGET): main.o player.o packets.o client_controller.o api.o aim.o weapon.o utils.o
+	$(CC) $(CFLAGS) -o $(TARGET) main.o player.o packets.o client_controller.o api.o aim.o weapon.o utils.o $(LIBS)
+	mkdir -p ../executables
+	cp $(TARGET) ../executables/
 
 # 2. Compilação dos objetos da raiz
 
-main.o: main.c player.h packets.h api.h packets.h ./controller/client_controller.h ../config.h ./aim.h
+main.o: main.c ../shared/player.h ../shared/packets.h api.h ./controller/client_controller.h ../config.h ../shared/aim.h
 	$(CC) $(CFLAGS) -c main.c
 
-player.o: player.c player.h ../config.h 
-	$(CC) $(CFLAGS) -c player.c
+player.o: ../shared/player.c ../shared/player.h ../config.h 
+	$(CC) $(CFLAGS) -c ../shared/player.c
 
-packets.o: packets.c packets.h ../config.h
-	$(CC) $(CFLAGS) -c packets.c
+packets.o: ../shared/packets.c ../shared/packets.h ../config.h
+	$(CC) $(CFLAGS) -c ../shared/packets.c
 
-# 3. Compilação dos objetos em subpastas (Atenção aos caminhos dos arquivos .c)
-client_controller.o: ./controller/client_controller.c ./controller/client_controller.h ../config.h
+client_controller.o: ./controller/client_controller.c ./controller/client_controller.h ../config.h ../shared/utils.h
 	$(CC) $(CFLAGS) -c ./controller/client_controller.c
 
-api.o: ./api.c ./api.h packets.h ../config.h
+utils.o: ../shared/utils.c ../shared/utils.h ../shared/player.h ../config.h
+	$(CC) $(CFLAGS) -c ../shared/utils.c
+
+api.o: ./api.c ./api.h ../shared/packets.h ../config.h
 	$(CC) $(CFLAGS) -c ./api.c
 
-aim.o: ./aim.c ./aim.h ../config.h
-	$(CC) $(CFLAGS) -c ./aim.c
+aim.o: ../shared/aim.c ../shared/aim.h ../config.h
+	$(CC) $(CFLAGS) -c ../shared/aim.c
 
-weapon.o: ./weapon.c ./weapon.h ../config.h
-	$(CC) $(CFLAGS) -c ./weapon.c
+weapon.o: ../shared/weapon.c ../shared/weapon.h ../config.h
+	$(CC) $(CFLAGS) -c ../shared/weapon.c
 
 # 4. Alvo de limpeza
 .PHONY: clean

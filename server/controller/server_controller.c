@@ -1,9 +1,9 @@
 #include "./server_controller.h"
 #include <string.h>
-#include "../validation/movement_validation.h"
+#include "../../shared/utils.h"
 
 void process_movement_packet(Player *player, PacketMove *packet) {
-    Vector2 next_position = VerifyCollisionWithWalls(player, packet->delta_movement);
+    Vector2 next_position = verify_collision_with_walls(player, packet->delta_movement);
     player_move(player, next_position);
 }
 

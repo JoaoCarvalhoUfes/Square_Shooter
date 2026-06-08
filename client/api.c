@@ -1,23 +1,13 @@
 #include <unistd.h>
 #include <math.h>
-#include "./packets.h"
-#include "./api.h"
-
-static Vector2 NormilizeMovement(Vector2 playerNextPosition)
-{
-    float length = sqrt(playerNextPosition.x * playerNextPosition.x + playerNextPosition.y * playerNextPosition.y);
-    if (length > 0)
-    {
-        playerNextPosition.x /= length;
-        playerNextPosition.y /= length;
-    }
-    return playerNextPosition;
-}
+#include "../shared/packets.h"
+#include "api.h"
+#include "../shared/utils.h"
 
 void request_move_player(int server_sockfd, int player_id, Vector2 delta_movement){
     if(delta_movement.x == 0 && delta_movement.y == 0) return;
 
-    delta_movement = NormilizeMovement(delta_movement);
+    delta_movement = normalize_movement(delta_movement);
     delta_movement.x *= PLAYER_SPEED * GetFrameTime();
     delta_movement.y *= PLAYER_SPEED * GetFrameTime();
     
@@ -38,4 +28,9 @@ void request_weapon_update(int server_sockfd, WeaponType weapon) {
 void request_aim_update(int server_sockfd, Aim *aim) {
     PacketAim packet = create_aim_packet(aim);
     send_packet(server_sockfd, AIM_UPDATE, &packet);
+}
+
+void request_shoot(int server_sockfd, int player_id) {
+    PacketShoot packet = create_shoot_packet(player_id);
+    send_packet(server_sockfd, SHOOT, &packet);
 }

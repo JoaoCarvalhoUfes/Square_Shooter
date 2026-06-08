@@ -2,12 +2,12 @@
 #define CONFIG_H
 
 #include "raylib.h"
-#include "./client/player.h"
+#include "./shared/player.h"
 
 // ========= DEFINES ==============
 #define WINDOW_NAME "Square Shooter"
 
-#define MAX_PLAYER_LIFE 5
+#define MAX_PLAYER_LIFE 100
 #define MAX_PLAYERS 30
 
 #define MAP_WIDTH 2000

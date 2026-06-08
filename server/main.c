@@ -15,10 +15,13 @@
 #include <sys/epoll.h>
 
 // includes que precisam melhorar a organização
+#include "../shared/player.h"
+#include "../shared/packets.h"
+#include "controller/server_controller.h"
 #include "../config.h"
-#include "./player.h"
-#include "./packets.h"
-#include "./controller/server_controller.h"
+#include "../shared/utils.h"
+#include "../shared/aim.h"
+#include "../shared/weapon.h"
 
 // Definindo o tickrate (60 vezes por segundo)
 #define TIME_PER_FRAME 16667
@@ -32,6 +35,11 @@ typedef struct
     // buffer config
     char buffer[BUFFER_SIZE];
     int num_bytes_in_buf;
+
+    // Server-side weapons for damage tracking
+    Weapon weapons[3];
+    
+    float respawn_timer;
 } PlayerConnection;
 
 // GLOBAL DATABASE ===========================
@@ -147,6 +155,10 @@ static void create_new_server_player(int client_fd)
             players_connections[i].fd = client_fd;
             players_connections[i].num_bytes_in_buf = 0;
 
+            weapon_init(&players_connections[i].weapons[0], WEAPON_PISTOL);
+            weapon_init(&players_connections[i].weapons[1], WEAPON_SHOTGUN);
+            weapon_init(&players_connections[i].weapons[2], WEAPON_SNIPER);
+
             // Lendo pacote de join request. Fica bloqueado aqui.
             read_packets(&players_connections[i], true);
 
@@ -241,6 +253,29 @@ void read_packets(PlayerConnection *player_connection, bool syscall_block)
             PacketChangeWeapon *packet = (PacketChangeWeapon *)(player_connection->buffer);
             process_change_weapon_packet(&player_connection->player, packet);
         }
+        else if(type == SHOOT) {
+            PacketShoot *packet = (PacketShoot *)(player_connection->buffer);
+            if (player_connection->player.life > 0) {
+                WeaponType current_type = get_player_weapon(&player_connection->player);
+                Weapon *w = NULL;
+                if (current_type == WEAPON_PISTOL) w = &player_connection->weapons[0];
+                else if (current_type == WEAPON_SHOTGUN) w = &player_connection->weapons[1];
+                else if (current_type == WEAPON_SNIPER) w = &player_connection->weapons[2];
+
+                if (w) {
+                    Vector2 origin = get_player_position(&player_connection->player);
+                    Vector2 player_center = (Vector2){origin.x + (PLAYER_WIDTH / 2.0f), origin.y + (PLAYER_HEIGHT / 2.0f)};
+                    weapon_fire(w, player_center, player_connection->player.aim.dir);
+                }
+
+                // Broadcast SHOOT to others
+                for(int i = 0; i < MAX_PLAYERS; i++) {
+                    if(player_is_connected(&players_connections[i].player) && i != player_connection->player.id) {
+                        send_packet(players_connections[i].fd, SHOOT, packet);
+                    }
+                }
+            }
+        }
 
         //===============================================================================
         // Deslocando os bytes restantes para o começo do buffer
@@ -294,6 +329,91 @@ void *snapshot_thread_function(void *arg)
     {
         // 1. Marca o início do ciclo
         gettimeofday(&start_time, NULL);
+        
+        float dt = TIME_PER_FRAME / 1000000.0f;
+
+        // Processa respawns e reseta estado
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (!player_is_connected(&players_connections[i].player)) continue;
+            
+            if (players_connections[i].respawn_timer > 0) {
+                players_connections[i].respawn_timer -= dt;
+                if (players_connections[i].respawn_timer <= 0) {
+                    players_connections[i].player.life = MAX_PLAYER_LIFE;
+                    players_connections[i].player.position = (Vector2){MAP_WIDTH/2, MAP_HEIGHT/2};
+                }
+            }
+        }
+
+        // Processa tiros e colisão no servidor
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (!player_is_connected(&players_connections[i].player)) continue;
+
+            for (int w = 0; w < 3; w++) {
+                Weapon *weapon = &players_connections[i].weapons[w];
+                weapon_update(weapon, dt);
+
+                for (int p_idx = 0; p_idx < MAX_PROJECTILES; p_idx++) {
+                    Projectile *proj = &weapon->projectiles[p_idx];
+                    if (!proj->active) continue;
+
+                    for (int j = 0; j < MAX_PLAYERS; j++) {
+                        if (i == j) continue; // sem dano em si mesmo
+                        if (!player_is_connected(&players_connections[j].player)) continue;
+
+                        Player *target = &players_connections[j].player;
+                        Vector2 target_pos = get_player_position(target);
+                        Rectangle target_rec = {target_pos.x, target_pos.y, PLAYER_WIDTH, PLAYER_HEIGHT};
+
+                        // Aproximando o projétil como um círculo de raio 8 para todos
+                        if (CheckCollisionCircleRec(proj->pos, 8.0f, target_rec)) {
+                            target->life -= weapon->damage;
+                            if (weapon->type != WEAPON_SNIPER) {
+                                proj->active = false;
+                            }
+                            printf("Player %d hit by Player %d! Life: %d\n", target->id, i, target->life);
+
+                            if (target->life <= 0) {
+                                players_connections[j].respawn_timer = 3.0f;
+                                target->position = (Vector2){-1000, -1000};
+                                target->life = 0;
+                            }
+
+                            if (weapon->type != WEAPON_SNIPER) {
+                                proj->active = false;
+                            }
+                            break; 
+                        }
+                    }
+                }
+
+                // Processa laser do sniper
+                if (weapon->type == WEAPON_SNIPER && weapon->laser.active && !weapon->laser.hit_processed) {
+                    weapon->laser.hit_processed = true;
+
+                    for (int j = 0; j < MAX_PLAYERS; j++) {
+                        if (i == j) continue; // sem dano em si mesmo
+                        if (!player_is_connected(&players_connections[j].player)) continue;
+
+                        Player *target = &players_connections[j].player;
+                        Vector2 target_pos = get_player_position(target);
+                        Vector2 target_center = {target_pos.x + PLAYER_WIDTH/2.0f, target_pos.y + PLAYER_HEIGHT/2.0f};
+
+                        if (CheckCollisionCircleLine(target_center, PLAYER_WIDTH/2.0f, weapon->laser.start, weapon->laser.end)) {
+                            target->life -= weapon->damage;
+                            printf("Player %d hit by Sniper Laser from Player %d! Life: %d\n", target->id, i, target->life);
+
+                            if (target->life <= 0) {
+                                players_connections[j].respawn_timer = 3.0f;
+                                target->position = (Vector2){-1000, -1000};
+                                target->life = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         SnapShot snapshot;
         memset(&snapshot, 0, sizeof(SnapShot));
         snapshot = generate_snapshot();

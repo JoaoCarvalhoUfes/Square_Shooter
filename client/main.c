@@ -11,19 +11,22 @@
 
 #include "raylib.h"
 #include "raymath.h"
-#include "./player.h"
-#include "./api.h"
-#include "./packets.h"
+#include "../shared/player.h"
+#include "../shared/packets.h"
+#include "api.h"
+#include "controller/client_controller.h"
 #include "../config.h"
-#include "./controller/client_controller.h"
-#include "./aim.h"
-#include "./weapon.h"
+#include "../shared/utils.h"
+#include "../shared/aim.h"
+#include "../shared/weapon.h"
 
 // ==================================================================
 // GLOBAL GAME
 ClientGame global_game_instance = {
     .num_bytes_in_buf = 0,
     .client_player_id = -1};
+Weapon all_players_weapons[MAX_PLAYERS][3];
+float player_damage_timer[MAX_PLAYERS] = {0};
 // ==================================================================
 
 int connect_to_server(char *hostname, int port_number);
@@ -31,6 +34,7 @@ void read_packets(int server_fd, bool syscall_block);
 void positions_players_interpolate(int player_id);
 Vector2 process_delta_movement();
 void draw_player(Player *p);
+void draw_game_world(Camera2D camera, float death_timer);
 
 void init_setup();
 
@@ -45,8 +49,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // Tela de entrada que solicita o nome antes do jogo começar
     init_setup();
+
+    // Calls the name input screen, which updates the buffer with the name chosen by the user
     char buffer[MAX_INPUT_CHARS];
     name_input_screen(buffer);
 
@@ -78,12 +83,13 @@ int main(int argc, char *argv[])
     // Configura a mira (module separado)
     aim_init(&global_game_instance.list_all_players[player_id].aim, PISTOL_AIM_RADIUS, WHITE);
 
-    // Weapons: prepare one of each and a current weapon
-    Weapon pistol, shotgun, sniper;
-    weapon_init(&pistol, WEAPON_PISTOL);
-    weapon_init(&shotgun, WEAPON_SHOTGUN);
-    weapon_init(&sniper, WEAPON_SNIPER);
-    Weapon *current_weapon = &pistol;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        weapon_init(&all_players_weapons[i][0], WEAPON_PISTOL);
+        weapon_init(&all_players_weapons[i][1], WEAPON_SHOTGUN);
+        weapon_init(&all_players_weapons[i][2], WEAPON_SNIPER);
+    }
+    
+    Weapon *current_weapon = &all_players_weapons[player_id][0];
 
     while (!WindowShouldClose())
     {
@@ -94,18 +100,20 @@ int main(int argc, char *argv[])
             player_id = global_game_instance.client_player_id;
 
         // Salva a diferença de posição
-        Vector2 delta_movement = process_delta_movement();
+        Vector2 raw_movement = process_delta_movement();
 
-        // Move o player localmente e online.
-        // Obs.: move localmente para o player local não ver delay.
+        Vector2 pixel_offset = normalize_movement(raw_movement);
+        pixel_offset.x *= PLAYER_SPEED * GetFrameTime();
+        pixel_offset.y *= PLAYER_SPEED * GetFrameTime();
 
-        // Mas, para segurança, futuramente deve fazer uma validação se a posição que o player foi
-        // faz sentido.
-        Vector2 new_position_local = VerifyCollisionWithWalls(&global_game_instance.list_all_players[player_id], delta_movement);
-        player_move(&global_game_instance.list_all_players[player_id], new_position_local);
-
-        // Move online
-        request_move_player(server_fd, player_id, delta_movement);
+        Vector2 new_position_local = verify_collision_with_walls(&global_game_instance.list_all_players[player_id], pixel_offset);
+        Player *local_player = &global_game_instance.list_all_players[player_id];
+        
+        // Move online if alive
+        if (local_player->life > 0) {
+            player_move(&global_game_instance.list_all_players[player_id], new_position_local);
+            request_move_player(server_fd, player_id, raw_movement);
+        }
 
         // Configuração de câmera
         Vector2 current_pos = get_player_position(&global_game_instance.list_all_players[player_id]);
@@ -118,35 +126,98 @@ int main(int argc, char *argv[])
         // Interpolação de movimento (para suavizar)
         positions_players_interpolate(player_id);
 
-        Player *local_player = &global_game_instance.list_all_players[player_id];
-
         // Atualiza a mira com base na posição do player and camera
         update_player_aim(local_player, camera);
         request_aim_update(server_fd, get_player_aim(local_player));
 
-        // Disparo: ao clicar, usa posição da mira para disparar
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        {
-            weapon_fire(current_weapon, get_player_position(local_player), get_player_aim_position(local_player));
+        // Sincroniza a posição visual da mira dos outros jogadores com suas posições interpoladas
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (i != player_id && player_is_connected(&global_game_instance.list_all_players[i])) {
+                Player *p = &global_game_instance.list_all_players[i];
+                Vector2 center = {p->position.x + PLAYER_WIDTH/2.0f, p->position.y + PLAYER_HEIGHT/2.0f};
+                p->aim.pos.x = center.x + p->aim.dir.x * p->aim.distance;
+                p->aim.pos.y = center.y + p->aim.dir.y * p->aim.distance;
+            }
         }
 
-        // Atualiza projeteis
+        // Disparo: ao clicar, usa posição da mira para disparar
+        if (local_player->life > 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+        {
+            Vector2 origin = get_player_position(local_player);
+            Vector2 player_center = (Vector2){origin.x + (PLAYER_WIDTH / 2.0f), origin.y + (PLAYER_HEIGHT / 2.0f)};
+            weapon_fire(current_weapon, player_center, local_player->aim.dir);
+            request_shoot(server_fd, player_id);
+        }
+
+        // Atualiza projeteis e timers
         float dt = GetFrameTime();
-        weapon_update(current_weapon, dt);
+        static float local_respawn_timer = 0.0f;
+        
+        if (local_player->life <= 0 && local_respawn_timer <= 0) {
+            local_respawn_timer = 3.0f;
+        } else if (local_respawn_timer > 0) {
+            local_respawn_timer -= dt;
+            if (local_respawn_timer < 0) local_respawn_timer = 0;
+        }
+
+        static int last_frame_life[MAX_PLAYERS] = {0};
+        
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (player_is_connected(&global_game_instance.list_all_players[i])) {
+                weapon_update(&all_players_weapons[i][0], dt);
+                weapon_update(&all_players_weapons[i][1], dt);
+                weapon_update(&all_players_weapons[i][2], dt);
+                
+                // --- CLIENT SIDE COLLISION TO DESTROY PROJECTILES VISUALLY ---
+                for (int w = 0; w < 3; w++) {
+                    Weapon *weapon = &all_players_weapons[i][w];
+                    if (weapon->type == WEAPON_SNIPER) continue; // Sniper is a laser, doesn't disappear on hit
+                    for (int p_idx = 0; p_idx < MAX_PROJECTILES; p_idx++) {
+                        Projectile *proj = &weapon->projectiles[p_idx];
+                        if (!proj->active) continue;
+                        
+                        for (int j = 0; j < MAX_PLAYERS; j++) {
+                            if (i == j) continue;
+                            if (!player_is_connected(&global_game_instance.list_all_players[j])) continue;
+                            
+                            Vector2 target_pos = get_player_position(&global_game_instance.list_all_players[j]);
+                            Rectangle target_rec = {target_pos.x, target_pos.y, PLAYER_WIDTH, PLAYER_HEIGHT};
+                            
+                            if (CheckCollisionCircleRec(proj->pos, 8.0f, target_rec)) {
+                                proj->active = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                // -------------------------------------------------------------
+                
+                int current_life = global_game_instance.list_all_players[i].life;
+                if (current_life < last_frame_life[i] && last_frame_life[i] > 0) {
+                    player_damage_timer[i] = 0.2f; // pisca vermelho por 200ms
+                }
+                last_frame_life[i] = current_life;
+                
+                if (player_damage_timer[i] > 0) player_damage_timer[i] -= dt;
+            } else {
+                last_frame_life[i] = 0;
+                player_damage_timer[i] = 0;
+            }
+        }
 
         // Troca de arma (1=pistol,2=shotgun,3=sniper)
         if (IsKeyPressed(KEY_ONE)) {
-            current_weapon = &pistol;
+            current_weapon = &all_players_weapons[player_id][0];
             set_player_aim(local_player, WEAPON_PISTOL);
             set_player_weapon(local_player, WEAPON_PISTOL);
             request_weapon_update(server_fd, WEAPON_PISTOL);
         } else if (IsKeyPressed(KEY_TWO)) {
-            current_weapon = &shotgun;
+            current_weapon = &all_players_weapons[player_id][1];
             set_player_aim(local_player, WEAPON_SHOTGUN);
             set_player_weapon(local_player, WEAPON_SHOTGUN);
             request_weapon_update(server_fd, WEAPON_SHOTGUN);
         } else if (IsKeyPressed(KEY_THREE)) {
-            current_weapon = &sniper;
+            current_weapon = &all_players_weapons[player_id][2];
             set_player_aim(local_player, WEAPON_SNIPER);
             set_player_weapon(local_player, WEAPON_SNIPER);
             request_weapon_update(server_fd, WEAPON_SNIPER);
@@ -154,57 +225,72 @@ int main(int argc, char *argv[])
         // ====================
 
         // 2. DESENHO (Draw)
-        BeginDrawing();
-        ClearBackground(BACKGROUND_COLOR); // Cor fora do mapa (ex: preto)
-
-        // NOVO: Inicia o modo de Câmera. Tudo desenhado aqui dentro pertence ao "Mundo"
-        BeginMode2D(camera);
-
-        // Desenha o fundo do mapa (ex: um chão cinza escuro)
-        DrawRectangle(0, 0, MAP_WIDTH, MAP_HEIGHT, DARKGRAY);
-
-        // Desenha uma grade (grid) para criar a percepção de movimento
-        for (int i = 0; i <= MAP_WIDTH; i += 100)
-        {
-            DrawLine(i, 0, i, MAP_HEIGHT, GRAY); // Linhas verticais
-        }
-        for (int i = 0; i <= MAP_HEIGHT; i += 100)
-        {
-            DrawLine(0, i, MAP_WIDTH, i, GRAY); // Linhas horizontais
-        }
-
-        // Desenha os limites extremos do mapa (borda vermelha)
-        DrawRectangleLines(0, 0, MAP_WIDTH, MAP_HEIGHT, RED);
-
-        // Desenha todos os players
-        for (int i = 0; i < MAX_PLAYERS; i++)
-        {
-            Player *p = &global_game_instance.list_all_players[i];
-            if (player_is_connected(p))
-            {
-                draw_player(p);
-            }
-        }
-
-        // Desenha projeteis da arma atual
-        weapon_draw(current_weapon);
-
-        EndMode2D(); // Termina o modo de câmera
-
-        // NOVO: Desenhos de UI (Interface). Tudo desenhado aqui fica fixo na tela!
-        DrawText("WASD para mover", 10, 10, 20, LIGHTGRAY);
-        DrawFPS(10, 40);
-
-        EndDrawing();
+        draw_game_world(camera, local_player->life <= 0 ? local_respawn_timer : 0.0f);
     }
 
     CloseWindow();
     return 0;
 }
 
-// =======================================
-// TELA DE ENTRADA DE NOME
-// =======================================
+void draw_game_world(Camera2D camera, float death_timer)
+{
+    BeginDrawing();
+    ClearBackground(BACKGROUND_COLOR); // Cor fora do mapa (ex: preto)
+
+    // NOVO: Inicia o modo de Câmera. Tudo desenhado aqui dentro pertence ao "Mundo"
+    BeginMode2D(camera);
+
+    // Desenha o fundo do mapa (ex: um chão cinza escuro)
+    DrawRectangle(0, 0, MAP_WIDTH, MAP_HEIGHT, DARKGRAY);
+
+    // Desenha uma grade (grid) para criar a percepção de movimento
+    for (int i = 0; i <= MAP_WIDTH; i += 100)
+    {
+        DrawLine(i, 0, i, MAP_HEIGHT, GRAY); // Linhas verticais
+    }
+    for (int i = 0; i <= MAP_HEIGHT; i += 100)
+    {
+        DrawLine(0, i, MAP_WIDTH, i, GRAY); // Linhas horizontais
+    }
+
+    // Desenha os limites extremos do mapa (borda vermelha)
+    DrawRectangleLines(0, 0, MAP_WIDTH, MAP_HEIGHT, RED);
+
+    // Desenha todos os players
+    for (int i = 0; i < MAX_PLAYERS; i++)
+    {
+        Player *p = &global_game_instance.list_all_players[i];
+        if (player_is_connected(p) && p->life > 0)
+        {
+            draw_player(p);
+            
+            weapon_draw(&all_players_weapons[i][0]);
+            weapon_draw(&all_players_weapons[i][1]);
+            weapon_draw(&all_players_weapons[i][2]);
+        }
+    }
+
+    EndMode2D(); // Termina o modo de câmera
+
+    DrawText("WASD para mover", 10, 10, 20, LIGHTGRAY);
+    DrawFPS(10, 40);
+
+    // Death Screen UI
+    if (death_timer > 0.0f) {
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 0.7f));
+        const char *deathText = "VOCE MORREU!";
+        const char *respawnText = TextFormat("Respawn em: %.1f", death_timer);
+        
+        int w1 = MeasureText(deathText, 40);
+        int w2 = MeasureText(respawnText, 30);
+        
+        DrawText(deathText, GetScreenWidth()/2 - w1/2, GetScreenHeight()/2 - 40, 40, RED);
+        DrawText(respawnText, GetScreenWidth()/2 - w2/2, GetScreenHeight()/2 + 10, 30, WHITE);
+    }
+
+    EndDrawing();
+}
+
 void name_input_screen(char *buffer)
 {
     char name[MAX_INPUT_CHARS + 1] = "\0";
@@ -216,7 +302,6 @@ void name_input_screen(char *buffer)
     {
         framesCounter++;
 
-        // Lê input do teclado
         int key = GetCharPressed();
 
         // Check if more characters have been pressed on the same frame
@@ -245,7 +330,6 @@ void name_input_screen(char *buffer)
         // Handle ENTER to confirm name
         if (IsKeyPressed(KEY_ENTER) && letterCount > 0)
         {
-            // atualiza o buffer com o nome setado
             strcpy(buffer, name);
             name_submitted = true;
         }
@@ -287,7 +371,7 @@ void name_input_screen(char *buffer)
 void init_setup()
 {
     InitWindow(800, 400, WINDOW_NAME);
-    SetTargetFPS(60); // NOVO: É boa prática travar o FPS para evitar consumo excessivo de CPU
+    SetTargetFPS(60); 
 }
 // =======================================
 // player
@@ -310,7 +394,13 @@ void draw_player(Player *p)
     WeaponType player_weapon = get_player_weapon(p);
     aim_draw(get_player_aim(p), get_weapon_shape_by_type(player_weapon));
     DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);
-    DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, RED);
+    
+    Color playerColor = BLACK;
+    if (player_damage_timer[p->id] > 0) {
+        playerColor = RED;
+    }
+    
+    DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, playerColor);
 }
 
 // =======================================
@@ -394,6 +484,25 @@ void read_packets(int server_fd, bool syscall_block)
             PacketSnapshot packet;
             memcpy(&packet, global_game_instance.buffer, sizeof(PacketSnapshot));
             process_snapshot_packet(&packet, &global_game_instance);
+        }
+        else if (type == SHOOT)
+        {
+            PacketShoot packet;
+            memcpy(&packet, global_game_instance.buffer, sizeof(PacketShoot));
+            if (packet.player_id != global_game_instance.client_player_id) {
+                Player *p = &global_game_instance.list_all_players[packet.player_id];
+                WeaponType w_type = get_player_weapon(p);
+                Weapon *w = NULL;
+                if (w_type == WEAPON_PISTOL) w = &all_players_weapons[packet.player_id][0];
+                else if (w_type == WEAPON_SHOTGUN) w = &all_players_weapons[packet.player_id][1];
+                else if (w_type == WEAPON_SNIPER) w = &all_players_weapons[packet.player_id][2];
+
+                if (w) {
+                    Vector2 origin = get_player_position(p);
+                    Vector2 p_center = (Vector2){origin.x + (PLAYER_WIDTH / 2.0f), origin.y + (PLAYER_HEIGHT / 2.0f)};
+                    weapon_fire(w, p_center, p->aim.dir);
+                }
+            }
         }
 
         //===============================================================================

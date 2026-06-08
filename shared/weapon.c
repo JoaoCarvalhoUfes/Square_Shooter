@@ -53,6 +53,7 @@ void weapon_init(Weapon *w, WeaponType type)
     for (int i = 0; i < MAX_PROJECTILES; i++)
         w->projectiles[i].active = false;
     w->laser.active = false;
+    w->laser.hit_processed = false;
 }
 
 static Projectile *weapon_spawn_proj(Weapon *w)
@@ -71,9 +72,8 @@ static Projectile *weapon_spawn_proj(Weapon *w)
     return 0;
 }
 
-void weapon_fire(Weapon *w, Vector2 origin, Vector2 aim_pos)
+void weapon_fire(Weapon *w, Vector2 origin, Vector2 dir)
 {
-    Vector2 dir = Vector2Subtract(aim_pos, origin);
     float len = Vector2Length(dir);
     if (len < 0.0001f)
         dir = (Vector2){1.0f, 0.0f};
@@ -97,6 +97,7 @@ void weapon_fire(Weapon *w, Vector2 origin, Vector2 aim_pos)
         w->laser.end = Vector2Add(origin, Vector2Scale(dir, SNIPER_LASER_RANGE));
         w->laser.life = SNIPER_LASER_LIFE;
         w->laser.active = true;
+        w->laser.hit_processed = false;
     }
     else if (w->type == WEAPON_SHOTGUN)
     {

@@ -21,6 +21,7 @@ typedef struct {
     Vector2 end;
     float life; // seconds remaining
     bool active;
+    bool hit_processed;
 } Laser;
 
 typedef struct {
@@ -36,7 +37,7 @@ typedef struct {
 } Weapon;
 
 void weapon_init(Weapon *w, WeaponType type);
-void weapon_fire(Weapon *w, Vector2 origin, Vector2 aim_pos);
+void weapon_fire(Weapon *w, Vector2 origin, Vector2 dir);
 void weapon_update(Weapon *w, float dt);
 void weapon_draw(Weapon *w);
 

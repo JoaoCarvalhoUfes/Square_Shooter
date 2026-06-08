@@ -56,3 +56,7 @@ dkms.conf
 
 # ours (ronald e joão)
 .vscode/
+
+# Ignore internal binaries but allow executables/ folder
+/client/client
+/server/server

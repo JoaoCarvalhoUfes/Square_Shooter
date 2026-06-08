@@ -3,20 +3,23 @@
 #include <string.h>
 
 int get_packet_size(type_packet type) {
-    if(type == MOVEMENT) {
-        return sizeof(PacketMove);
-    } else if (type == JOIN_ACCEPT) {
-        return sizeof(PacketJoinAccept);
-    } else if (type == SNAPSHOT) {
-        return sizeof(PacketSnapshot);
-    } else  if (type == JOIN_REQUEST){
-        return sizeof(PacketJoinRequest);
-    } else if (type == AIM_UPDATE) {
-        return sizeof(PacketAim);
-    } else if (type == CHANGE_WEAPON) {
-        return sizeof(PacketChangeWeapon);
-    } else {
-        return 0;
+    switch (type) {
+        case MOVEMENT:
+            return sizeof(PacketMove);
+        case JOIN_ACCEPT:
+            return sizeof(PacketJoinAccept);
+        case SNAPSHOT:
+            return sizeof(PacketSnapshot);
+        case JOIN_REQUEST:
+            return sizeof(PacketJoinRequest);
+        case AIM_UPDATE:
+            return sizeof(PacketAim);
+        case CHANGE_WEAPON:
+            return sizeof(PacketChangeWeapon);
+        case SHOOT:
+            return sizeof(PacketShoot);
+        default:
+            return 0;
     }
 }
 
@@ -67,14 +70,19 @@ PacketJoinRequest create_join_resquest_packet(char *name) {
 }
 
 PacketChangeWeapon create_change_weapon_packet(WeaponType weapon) {
-    PacketChangeWeapon p = {
-        .type = CHANGE_WEAPON,
-        .weapon = weapon
-    };
+    PacketChangeWeapon packet;
+    packet.type = CHANGE_WEAPON;
+    packet.weapon = weapon;
 
-    return p;
+    return packet;
 }
 
+PacketShoot create_shoot_packet(int player_id) {
+    PacketShoot packet;
+    packet.type = SHOOT;
+    packet.player_id = player_id;
+    return packet;
+}
 
 void send_packet(int dst_socket, type_packet type, void *packet) {
     write(dst_socket, packet, get_packet_size(type));

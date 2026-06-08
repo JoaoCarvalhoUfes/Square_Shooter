@@ -43,6 +43,11 @@ typedef struct {
 
 typedef struct {
     type_packet type;
+    int player_id;
+} PacketShoot;
+
+typedef struct {
+    type_packet type;
     SnapShot snapshot;
 } PacketSnapshot;
 
@@ -55,5 +60,6 @@ PacketJoinAccept create_join_accept_packet(int player_id);
 PacketJoinRequest create_join_resquest_packet(char *name);
 PacketAim create_aim_packet(Aim *aim);
 PacketChangeWeapon create_change_weapon_packet(WeaponType weapon);
+PacketShoot create_shoot_packet(int player_id);
 
 #endif

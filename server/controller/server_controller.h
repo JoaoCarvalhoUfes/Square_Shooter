@@ -1,8 +1,8 @@
 #ifndef SERVER_CONTROLLER_H
 #define SERVER_CONTROLLER_H
 
-#include "../player.h"
-#include "../packets.h"
+#include "../../shared/player.h"
+#include "../../shared/packets.h"
 #include "raylib.h"
 
 void process_movement_packet(Player *player, PacketMove *packet);

@@ -14,6 +14,7 @@ struct player
     char name[8];
     bool is_connected;
     int life;
+    int kills;
 
     Vector2 position;
     Vector2 target_position;
@@ -29,6 +30,7 @@ Vector2 get_player_position(Player *p);
 char *get_player_name(Player *p);
 Aim *get_player_aim(Player *p);
 WeaponType get_player_weapon(Player *p);
+int get_player_life(Player *p);
 
 void set_player_aim(Player *p, WeaponType weapon);
 void set_player_name(Player *p, const char *name);

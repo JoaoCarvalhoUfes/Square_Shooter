@@ -153,7 +153,7 @@ int main(int argc, char *argv[])
         float dt = GetFrameTime();
         static float local_respawn_timer = 0.0f;
         
-        if (local_player->life <= 0 && local_respawn_timer <= 0) {
+        if (local_player->is_connected && local_player->life <= 0 && local_respawn_timer <= 0) {
             local_respawn_timer = 3.0f;
         } else if (local_respawn_timer > 0) {
             local_respawn_timer -= dt;
@@ -225,7 +225,7 @@ int main(int argc, char *argv[])
         // ====================
 
         // 2. DESENHO (Draw)
-        draw_game_world(camera, local_player->life <= 0 ? local_respawn_timer : 0.0f);
+        draw_game_world(camera, (local_player->is_connected && local_player->life <= 0) ? local_respawn_timer : 0.0f);
     }
 
     CloseWindow();
@@ -272,8 +272,34 @@ void draw_game_world(Camera2D camera, float death_timer)
 
     EndMode2D(); // Termina o modo de câmera
 
-    DrawText("WASD para mover", 10, 10, 20, LIGHTGRAY);
-    DrawFPS(10, 40);
+    DrawFPS(10, 10);
+    
+    // Draw Leaderboard
+    int active_players = 0;
+    Player* sorted_players[MAX_PLAYERS];
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (player_is_connected(&global_game_instance.list_all_players[i])) {
+            sorted_players[active_players++] = &global_game_instance.list_all_players[i];
+        }
+    }
+    
+    // Bubble sort descending by kills
+    for (int i = 0; i < active_players - 1; i++) {
+        for (int j = 0; j < active_players - i - 1; j++) {
+            if (sorted_players[j]->kills < sorted_players[j+1]->kills) {
+                Player* temp = sorted_players[j];
+                sorted_players[j] = sorted_players[j+1];
+                sorted_players[j+1] = temp;
+            }
+        }
+    }
+    
+    int lb_x = GetScreenWidth() - 250;
+    int lb_y = 10;
+    DrawText("LEADERBOARD", lb_x, lb_y, 20, YELLOW);
+    for (int i = 0; i < active_players; i++) {
+        DrawText(TextFormat("%d. %s - %d", i + 1, sorted_players[i]->name, sorted_players[i]->kills), lb_x, lb_y + 30 + (i * 20), 20, WHITE);
+    }
 
     // Death Screen UI
     if (death_timer > 0.0f) {
@@ -338,14 +364,22 @@ void name_input_screen(char *buffer)
         BeginDrawing();
         ClearBackground(DARKGRAY);
 
-        // Desenha o pedido de nome do jogador - Tela monótona
-        DrawText("ENTER YOUR NAME:", 240, 140, 20, LIGHTGRAY);
+        int screenWidth = GetScreenWidth();
+        int screenHeight = GetScreenHeight();
+        
+        int boxWidth = 320;
+        int boxHeight = 50;
+        int boxX = screenWidth / 2 - boxWidth / 2;
+        int boxY = screenHeight / 2 - boxHeight / 2;
+        
+        const char *title = "ENTER YOUR NAME:";
+        int titleWidth = MeasureText(title, 20);
+        int titleX = screenWidth / 2 - titleWidth / 2;
+        int titleY = boxY - 40;
 
-        // Draw the input box outline
-        DrawRectangleLines(240, 180, 320, 50, LIGHTGRAY);
-
-        // Draw the text typed by the user
-        DrawText(name, 250, 192, 24, WHITE);
+        DrawText(title, titleX, titleY, 20, LIGHTGRAY);
+        DrawRectangleLines(boxX, boxY, boxWidth, boxHeight, LIGHTGRAY);
+        DrawText(name, boxX + 10, boxY + 12, 24, WHITE);
 
         // Draw a blinking underscore cursor if under character limit
         if (letterCount < MAX_INPUT_CHARS)
@@ -353,15 +387,31 @@ void name_input_screen(char *buffer)
             // Blink every 30 frames (0.5 seconds at 60 FPS)
             if (((framesCounter / 30) % 2) == 0)
             {
-                DrawText("_", 250 + MeasureText(name, 24), 192, 24, WHITE);
+                DrawText("_", boxX + 10 + MeasureText(name, 24), boxY + 12, 24, WHITE);
             }
         }
         else
         {
-            DrawText("Press BACKSPACE to delete", 240, 250, 20, RED);
+            const char *delText = "Press BACKSPACE to delete";
+            int delWidth = MeasureText(delText, 20);
+            DrawText(delText, screenWidth / 2 - delWidth / 2, boxY + boxHeight + 20, 20, RED);
         }
 
-        DrawText("Press ENTER to confirm", 240, 300, 20, YELLOW);
+        const char *confirmText = "Press ENTER to confirm";
+        int confirmWidth = MeasureText(confirmText, 20);
+        DrawText(confirmText, screenWidth / 2 - confirmWidth / 2, boxY + boxHeight + 50, 20, YELLOW);
+        
+        // Controles na tela de entrada
+        const char *controlsTitle = "CONTROLS:";
+        const char *controlsMove = "W A S D - Move";
+        const char *controlsWeapons = "1, 2, 3 - Select Weapon";
+        const char *controlsShoot = "Left Mouse Click - Shoot";
+        
+        DrawText(controlsTitle, 10, screenHeight - 120, 20, LIGHTGRAY);
+        DrawText(controlsMove, 10, screenHeight - 90, 20, WHITE);
+        DrawText(controlsWeapons, 10, screenHeight - 60, 20, WHITE);
+        DrawText(controlsShoot, 10, screenHeight - 30, 20, WHITE);
+        
         DrawFPS(10, 10);
 
         EndDrawing();
@@ -370,7 +420,9 @@ void name_input_screen(char *buffer)
 
 void init_setup()
 {
-    InitWindow(800, 400, WINDOW_NAME);
+    InitWindow(800,800, WINDOW_NAME);
+    SetWindowSize(GetMonitorWidth(GetCurrentMonitor()) * 0.75f, GetMonitorHeight(GetCurrentMonitor()) * 0.75f);
+    SetWindowPosition((GetMonitorWidth(GetCurrentMonitor()) - GetScreenWidth()) / 2, (GetMonitorHeight(GetCurrentMonitor()) - GetScreenHeight()) / 2);
     SetTargetFPS(60); 
 }
 // =======================================
@@ -379,6 +431,7 @@ void draw_player(Player *p)
 {
     Vector2 player_position = get_player_position(p);
     char *player_name = get_player_name(p);
+    int player_life = get_player_life(p);
 
     // Calcula a posição do Texto
     // Medimos a largura do texto para centralizar perfeitamente acima do quadrado
@@ -393,14 +446,15 @@ void draw_player(Player *p)
     // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
     WeaponType player_weapon = get_player_weapon(p);
     aim_draw(get_player_aim(p), get_weapon_shape_by_type(player_weapon));
-    DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);
-    
+    DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);    
+
     Color playerColor = BLACK;
     if (player_damage_timer[p->id] > 0) {
         playerColor = RED;
     }
     
     DrawRectangleV(player_position, (Vector2){.x = PLAYER_WIDTH, .y = PLAYER_HEIGHT}, playerColor);
+    DrawRectangle(player_position.x, player_position.y + PLAYER_HEIGHT + 5, (PLAYER_WIDTH * player_life) / MAX_PLAYER_LIFE, 5, GREEN);
 }
 
 // =======================================

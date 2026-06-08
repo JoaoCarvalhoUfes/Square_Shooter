@@ -22,8 +22,9 @@ void process_snapshot_packet(PacketSnapshot *packet, ClientGame *client_game)
         client_game->list_all_players[i].is_connected = packet->snapshot.list_all_players[i].is_connected;
         strcpy(client_game->list_all_players[i].name, packet->snapshot.list_all_players[i].name);
         
-        // Copia a vida
+        // Copia a vida e kills
         client_game->list_all_players[i].life = packet->snapshot.list_all_players[i].life;
+        client_game->list_all_players[i].kills = packet->snapshot.list_all_players[i].kills;
 
         // A mira do client ja eh feita localmente
         if(client_game->client_player_id != i) {

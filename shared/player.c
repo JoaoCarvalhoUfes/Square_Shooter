@@ -9,6 +9,7 @@ Player player_create(const char *name, int id, Vector2 player_position)
     p.id = id;
     strcpy(p.name, name);
     p.life = MAX_PLAYER_LIFE;
+    p.kills = 0;
     p.is_connected = true;
 
     // Correção da posição
@@ -56,6 +57,10 @@ char *get_player_name(Player *p)
 
 WeaponType get_player_weapon(Player *p) {
     return p->weapon;
+}
+
+int get_player_life(Player *p) {
+    return p->life;
 }
 
 void set_player_weapon(Player *p, WeaponType weapon) {

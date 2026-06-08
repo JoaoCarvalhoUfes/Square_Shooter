@@ -367,16 +367,18 @@ void *snapshot_thread_function(void *arg)
 
                         // Aproximando o projétil como um círculo de raio 8 para todos
                         if (CheckCollisionCircleRec(proj->pos, 8.0f, target_rec)) {
+                            int previous_life = target->life;
                             target->life -= weapon->damage;
                             if (weapon->type != WEAPON_SNIPER) {
                                 proj->active = false;
                             }
                             printf("Player %d hit by Player %d! Life: %d\n", target->id, i, target->life);
 
-                            if (target->life <= 0) {
+                            if (previous_life > 0 && target->life <= 0) {
                                 players_connections[j].respawn_timer = 3.0f;
                                 target->position = (Vector2){-1000, -1000};
                                 target->life = 0;
+                                players_connections[i].player.kills++;
                             }
 
                             if (weapon->type != WEAPON_SNIPER) {
@@ -400,13 +402,15 @@ void *snapshot_thread_function(void *arg)
                         Vector2 target_center = {target_pos.x + PLAYER_WIDTH/2.0f, target_pos.y + PLAYER_HEIGHT/2.0f};
 
                         if (CheckCollisionCircleLine(target_center, PLAYER_WIDTH/2.0f, weapon->laser.start, weapon->laser.end)) {
+                            int previous_life = target->life;
                             target->life -= weapon->damage;
                             printf("Player %d hit by Sniper Laser from Player %d! Life: %d\n", target->id, i, target->life);
 
-                            if (target->life <= 0) {
+                            if (previous_life > 0 && target->life <= 0) {
                                 players_connections[j].respawn_timer = 3.0f;
                                 target->position = (Vector2){-1000, -1000};
                                 target->life = 0;
+                                players_connections[i].player.kills++;
                             }
                         }
                     }

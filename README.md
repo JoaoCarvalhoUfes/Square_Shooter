@@ -1,7 +1,7 @@
-# Trabalho_Redes
+# Square_Shooter
 
 #### Descrição
-O trabalho é um jogo shooter 2D top-down multiplayer. Nele você encontrará 3 armas diferentes que podem ser selecionadas com as teclas `1`, `2` e `3` do teclado, e utilizar o botão esquerdo do mouse para disparar.
+Square Shooter é um jogo shooter 2D top-down multiplayer desenvolvido para o trabalho de redes de computadores 2026/1 da Universidade Federal do Espirito Santo. Nele você encontrará 3 armas diferentes que podem ser selecionadas com as teclas `1`, `2` e `3` do teclado, e utilizar o botão esquerdo do mouse para disparar.
 
 Os principais desafios encontrados durante o desenvolvimento foram:
 

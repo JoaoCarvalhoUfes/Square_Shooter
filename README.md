@@ -7,8 +7,7 @@ Os principais desafios encontrados durante o desenvolvimento foram:
 
 > 1) O desenvolvimento de uma interface gráfica em C utilizando uma biblioteca externa.
 
-Apesar da biblioteca externa facilitar o trabalho, a linguagem C é uma linguagem de mais baixo nível se
-comparada a outras linguagens (tais como Python, Java, Go...). Portanto, 
+Apesar da biblioteca externa raylib facilitar o trabalho, a linguagem C é uma linguagem de mais baixo nível se comparada a outras linguagens (tais como Python, Java, Go...). Dessa forma, foi necessário adaptar-se ao fluxo de trabalho que essa biblioteca define e às suas funções. 
 
 > 2) Utilização de sockets da linguagem C.
 
@@ -19,7 +18,11 @@ Toda a comunicação entre cliente e servidor utilizam os pacotes/structs defini
 
 > 3) Garantia de sincronização entre os jogadores (real-time).
 
-(completar)
+Devido à latência (lag) natural em jogos *real-time*, foi adotado o modelo de *Authoritative Server*, onde o Servidor centraliza as validações (dano, colisão) e propaga o estado global do jogo aos clientes por meio de *Snapshots*. 
+
+Para garantir uma gameplay fluida e sem "teleportes" (*stuttering*), implementamos duas técnicas no Cliente:
+- **Interpolação:** Suavização visual do movimento dos adversários na transição de coordenadas entre um pacote e outro.
+- **Previsão Local:** O cliente processa seu próprio movimento instantaneamente, sem esperar validação. O Servidor só força uma correção (*rollback*) se a discrepância de pixels entre as telas ultrapassar uma margem de tolerância.
 
 #### Tecnologias utilizadas
 
@@ -28,9 +31,7 @@ O jogo foi desenvolvido em C. E, a principal ferramenta utilizada para desenvolv
 
 #### Instalação
 
-O repositório já contém os executáveis compatíveis com a distro Ubuntu 24.04.03 LTS. 
-Caso eventualmente seja necessário re-compilar o código fonte (por motivos de compatibilidade), é necessário instalar 
-a biblioteca [`raylib.h`](https://github.com/raysan5/raylib).
+O repositório já contém os executáveis prontos para uso. Caso eventualmente seja necessário re-compilar o código fonte (por motivos de compatibilidade), é necessário instalar a biblioteca [`raylib.h`](https://github.com/raysan5/raylib).
 
 > **Nota:** Para re-compilar os arquivos de execução, basta rodar o comando `make` nas pastas `client/` e `server/`
 

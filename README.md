@@ -48,5 +48,5 @@ Os demais jogadores devem baixar o arquivo `client` na pasta `executables/` e ab
 ./client 192.168.1.50 8080
 ```
 
-> **Nota 1:** Se os arquivos recém-baixados não abrirem por falta de permissão no Linux, basta rodar o comando `chmod +x server` e `chmod +x client` para liberar a execução deles.
+> **Nota:** Se os arquivos recém-baixados não abrirem por falta de permissão no Linux, basta rodar o comando `chmod +x server` e `chmod +x client` para liberar a execução deles.
 

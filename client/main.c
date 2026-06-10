@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
     init_setup();
 
     // Calls the name input screen, which updates the buffer with the name chosen by the user
-    char buffer[MAX_INPUT_CHARS];
+    char buffer[MAX_INPUT_CHARS + 1];
     name_input_screen(buffer);
 
     // ============== SERVIDOR ==============
@@ -354,7 +354,7 @@ void name_input_screen(char *buffer)
         }
 
         // Handle ENTER to confirm name
-        if (IsKeyPressed(KEY_ENTER) && letterCount > 0)
+        if (IsKeyPressed(KEY_ENTER) && (letterCount > 0) && (letterCount < MAX_INPUT_CHARS))
         {
             strcpy(buffer, name);
             name_submitted = true;

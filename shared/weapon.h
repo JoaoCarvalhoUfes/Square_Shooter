@@ -41,6 +41,7 @@ void weapon_fire(Weapon *w, Vector2 origin, Vector2 dir);
 void weapon_update(Weapon *w, float dt);
 void weapon_draw(Weapon *w);
 
+bool is_valid_weapon(WeaponType type);
 int get_weapon_shape_by_type(WeaponType type);
 
 #endif

@@ -16,5 +16,7 @@ void process_aim_packet(Player *player, PacketAim *packet) {
 }
 
 void process_change_weapon_packet(Player *player, PacketChangeWeapon *packet) {
-    player->weapon = packet->weapon;
+    if(is_valid_weapon(packet->weapon)) {
+        player->weapon = packet->weapon;
+    }
 }

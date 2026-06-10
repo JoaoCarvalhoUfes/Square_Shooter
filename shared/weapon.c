@@ -5,6 +5,16 @@
 
 static float deg2rad(float d) { return d * (PI / 180.0f); }
 
+bool is_valid_weapon(WeaponType type) {
+    if((type == WEAPON_PISTOL)
+        || (type == WEAPON_SHOTGUN)
+         || (type == WEAPON_SNIPER)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 int get_weapon_shape_by_type(WeaponType type) {
     if(type == WEAPON_PISTOL) {
         return 1;

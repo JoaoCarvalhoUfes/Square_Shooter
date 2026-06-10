@@ -11,7 +11,7 @@ struct player
     int id;
 
     // tem q colocar constante aqui (ainda não fiz por problemas de import circular)
-    char name[8];
+    char name[9];
     bool is_connected;
     int life;
     int kills;

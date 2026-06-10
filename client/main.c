@@ -189,6 +189,7 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
+                }
 
                 
                 int current_life = global_game_instance.list_all_players[i].life;

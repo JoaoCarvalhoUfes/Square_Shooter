@@ -85,13 +85,13 @@ int main(int argc, char *argv[])
     // ===================
     // SERVER AND CLIENT CONFIG
     int port_number = atoi(argv[1]);
-    int server_sockfd = create_and_bind_passive_socket(port_number);
+    int server_sockfd = create_and_bind_passive_socket(port_number); 
 
     // client config
     int client_sockfd;
 
     // Definindo como um socket passivo
-    listen(server_sockfd, MAX_PLAYERS);
+    listen(server_sockfd, MAX_PLAYERS); // verify success!!!
 
     // ===================
     // LOOP PRINCIPAL

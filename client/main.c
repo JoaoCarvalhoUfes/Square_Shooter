@@ -75,10 +75,9 @@ int main(int argc, char *argv[])
     // Pega o player_id após nome ser inserido
     player_id = global_game_instance.client_player_id;
 
-    // NOVO: Configurando a Câmera 2D
     Camera2D camera = {0};
     camera.rotation = 0.0f;
-    camera.zoom = 0.75f; // zoom intermediário para ver boa parte do mapa
+    camera.zoom = 0.75f;
 
     // Configura a mira (module separado)
     aim_init(&global_game_instance.list_all_players[player_id].aim, PISTOL_AIM_RADIUS, WHITE);
@@ -109,7 +108,7 @@ int main(int argc, char *argv[])
         Vector2 new_position_local = verify_collision_with_walls(&global_game_instance.list_all_players[player_id], pixel_offset);
         Player *local_player = &global_game_instance.list_all_players[player_id];
         
-        // Move online if alive
+        // shouldnt it be in server???
         if (local_player->life > 0) {
             player_move(&global_game_instance.list_all_players[player_id], new_position_local);
             request_move_player(server_fd, player_id, raw_movement);
@@ -140,7 +139,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Disparo: ao clicar, usa posição da mira para disparar
+        // shouldnt this verification be made by server too?
         if (local_player->life > 0 && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
             Vector2 origin = get_player_position(local_player);
@@ -153,6 +152,7 @@ int main(int argc, char *argv[])
         float dt = GetFrameTime();
         static float local_respawn_timer = 0.0f;
         
+        // verify "is_connected" in server script
         if (local_player->is_connected && local_player->life <= 0 && local_respawn_timer <= 0) {
             local_respawn_timer = 3.0f;
         } else if (local_respawn_timer > 0) {
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
                 weapon_update(&all_players_weapons[i][1], dt);
                 weapon_update(&all_players_weapons[i][2], dt);
                 
-                // --- CLIENT SIDE COLLISION TO DESTROY PROJECTILES VISUALLY ---
+                // client side collision to destroy projectiles visualy
                 for (int w = 0; w < 3; w++) {
                     Weapon *weapon = &all_players_weapons[i][w];
                     if (weapon->type == WEAPON_SNIPER) continue; // Sniper is a laser, doesn't disappear on hit
@@ -189,8 +189,7 @@ int main(int argc, char *argv[])
                             }
                         }
                     }
-                }
-                // -------------------------------------------------------------
+
                 
                 int current_life = global_game_instance.list_all_players[i].life;
                 if (current_life < last_frame_life[i] && last_frame_life[i] > 0) {
@@ -224,7 +223,7 @@ int main(int argc, char *argv[])
         }
         // ====================
 
-        // 2. DESENHO (Draw)
+        // 2. DESENHO 
         draw_game_world(camera, (local_player->is_connected && local_player->life <= 0) ? local_respawn_timer : 0.0f);
     }
 
@@ -235,12 +234,11 @@ int main(int argc, char *argv[])
 void draw_game_world(Camera2D camera, float death_timer)
 {
     BeginDrawing();
-    ClearBackground(BACKGROUND_COLOR); // Cor fora do mapa (ex: preto)
+    ClearBackground(BACKGROUND_COLOR); // Cor fora do mapa 
 
-    // NOVO: Inicia o modo de Câmera. Tudo desenhado aqui dentro pertence ao "Mundo"
     BeginMode2D(camera);
 
-    // Desenha o fundo do mapa (ex: um chão cinza escuro)
+    // Desenha o fundo do mapa
     DrawRectangle(0, 0, MAP_WIDTH, MAP_HEIGHT, DARKGRAY);
 
     // Desenha uma grade (grid) para criar a percepção de movimento
@@ -253,7 +251,7 @@ void draw_game_world(Camera2D camera, float death_timer)
         DrawLine(0, i, MAP_WIDTH, i, GRAY); // Linhas horizontais
     }
 
-    // Desenha os limites extremos do mapa (borda vermelha)
+    // Desenha os limites extremos do mapa 
     DrawRectangleLines(0, 0, MAP_WIDTH, MAP_HEIGHT, RED);
 
     // Desenha todos os players
@@ -283,7 +281,7 @@ void draw_game_world(Camera2D camera, float death_timer)
         }
     }
     
-    // Bubble sort descending by kills
+    // update this bobble sort to a qsort
     for (int i = 0; i < active_players - 1; i++) {
         for (int j = 0; j < active_players - i - 1; j++) {
             if (sorted_players[j]->kills < sorted_players[j+1]->kills) {
@@ -293,11 +291,13 @@ void draw_game_world(Camera2D camera, float death_timer)
             }
         }
     }
-    
+
+    // update to highlight the local player on leaderboard
     int lb_x = GetScreenWidth() - 250;
     int lb_y = 10;
     DrawText("LEADERBOARD", lb_x, lb_y, 20, YELLOW);
     for (int i = 0; i < active_players; i++) {
+
         DrawText(TextFormat("%d. %s - %d", i + 1, sorted_players[i]->name, sorted_players[i]->kills), lb_x, lb_y + 30 + (i * 20), 20, WHITE);
     }
 
@@ -360,7 +360,7 @@ void name_input_screen(char *buffer)
             name_submitted = true;
         }
 
-        // 2. DESENHO (Draw)
+        // 2. Draw
         BeginDrawing();
         ClearBackground(DARKGRAY);
 
@@ -425,7 +425,7 @@ void init_setup()
     SetWindowPosition((GetMonitorWidth(GetCurrentMonitor()) - GetScreenWidth()) / 2, (GetMonitorHeight(GetCurrentMonitor()) - GetScreenHeight()) / 2);
     SetTargetFPS(60); 
 }
-// =======================================
+
 // player
 void draw_player(Player *p)
 {
@@ -434,16 +434,14 @@ void draw_player(Player *p)
     int player_life = get_player_life(p);
 
     // Calcula a posição do Texto
-    // Medimos a largura do texto para centralizar perfeitamente acima do quadrado
+    // Medimos a largura do texto para centralizar acima do player
     int textWidth = MeasureText(player_name, FONT_SIZE);
 
-    // X centralizado: centro do player menos a metade da largura do texto
     int textX = player_position.x + (PLAYER_WIDTH / 2) - (textWidth / 2);
 
-    // Y acima do player: Y do player menos a altura da fonte e uma folga (ex: 10 pixels)
     int textY = player_position.y - FONT_SIZE - 10;
 
-    // Desenha a mira (em coordenadas de mundo) - default como pistola (1)
+    // Desenha a mira
     WeaponType player_weapon = get_player_weapon(p);
     aim_draw(get_player_aim(p), get_weapon_shape_by_type(player_weapon));
     DrawText(player_name, textX, textY, FONT_SIZE, FONT_COLOR);    
@@ -457,7 +455,6 @@ void draw_player(Player *p)
     DrawRectangle(player_position.x, player_position.y + PLAYER_HEIGHT + 5, (PLAYER_WIDTH * player_life) / MAX_PLAYER_LIFE, 5, GREEN);
 }
 
-// =======================================
 // movement interpolate
 void positions_players_interpolate(int player_id)
 {
@@ -543,6 +540,8 @@ void read_packets(int server_fd, bool syscall_block)
         {
             PacketShoot packet;
             memcpy(&packet, global_game_instance.buffer, sizeof(PacketShoot));
+
+            // se o projetil não for do client local vai criar um peojetil pro disparo do outro player 
             if (packet.player_id != global_game_instance.client_player_id) {
                 Player *p = &global_game_instance.list_all_players[packet.player_id];
                 WeaponType w_type = get_player_weapon(p);
@@ -559,7 +558,6 @@ void read_packets(int server_fd, bool syscall_block)
             }
         }
 
-        //===============================================================================
         // Deslocando os bytes restantes para o começo do buffer
         int bytes_left = global_game_instance.num_bytes_in_buf - packet_size;
         memmove(global_game_instance.buffer, (global_game_instance.buffer + packet_size), bytes_left);
@@ -567,7 +565,6 @@ void read_packets(int server_fd, bool syscall_block)
     }
 }
 
-// ====================================
 
 // Retorna o descritor de arquivo do servidor
 int connect_to_server(char *hostname, int port_number)

@@ -23,7 +23,7 @@ player.o: ../shared/player.c ../shared/player.h ../config.h
 packets.o: ../shared/packets.c ../shared/packets.h ../config.h
 	$(CC) $(CFLAGS) -c ../shared/packets.c
 
-client_controller.o: ./controller/client_controller.c ./controller/client_controller.h ../config.h ../shared/utils.h
+client_controller.o: ./controller/client_controller.c ./controller/client_controller.h ../config.h ../shared/utils.h ../shared/player.h ../shared/packets.h
 	$(CC) $(CFLAGS) -c ./controller/client_controller.c
 
 utils.o: ../shared/utils.c ../shared/utils.h ../shared/player.h ../config.h

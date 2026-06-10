@@ -354,7 +354,7 @@ void name_input_screen(char *buffer)
         }
 
         // Handle ENTER to confirm name
-        if (IsKeyPressed(KEY_ENTER) && (letterCount > 0) && (letterCount < MAX_INPUT_CHARS))
+        if (IsKeyPressed(KEY_ENTER) && (letterCount > 0) && (letterCount <= MAX_INPUT_CHARS))
         {
             strcpy(buffer, name);
             name_submitted = true;
